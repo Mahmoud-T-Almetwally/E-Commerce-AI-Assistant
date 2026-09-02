@@ -1,30 +1,25 @@
 import os
+import yaml
 from typing import Literal, Optional, Dict
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, ValidationError
 
-from utils.exceptions import ProviderAPIKeyNotFound
+from utils.exceptions import ProviderAPIKeyNotFound, ConfigFileNotFoundError
 
 
-# Mapping of provider names to their required environment variable keys
 PROVIDER_API_KEY_MAP: Dict[str, Optional[str]] = {
     "openai": "OPENAI_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
     "groq": "GROQ_API_KEY",
     "google": "GOOGLE_API_KEY",
-    "huggingface": "HUGGINGFACE_API_KEY",
-    "local": None  # Local providers don't need an API key
+    "huggingface": "HUGGINGFACEHUB_API_TOKEN",
+    "local": None
 }
 
 def resolve_api_key(provider: str, provided_key: Optional[str]) -> Optional[str]:
-    """
-    Checks the provider mapping and retrieves the API key from the environment.
-    Raises ProviderAPIKeyNotFound if the required key is missing.
-    """
     if provided_key:
         return provided_key
 
     expected_env_var = PROVIDER_API_KEY_MAP.get(provider.lower())
-    
     if not expected_env_var:
         return None
 
@@ -35,8 +30,14 @@ def resolve_api_key(provider: str, provided_key: Optional[str]) -> Optional[str]
     return api_key
 
 
+class DatabaseConfig(BaseModel):
+    url: str = Field(default_factory=lambda: os.getenv("DATABASE_URL", "sqlite:///instance/ecommerce.db"))
+    chroma_persist_directory: str = Field(default_factory=lambda: os.getenv("CHROMA_DB_DIR", "./instance/chroma_db"))
+    echo_queries: bool = False
+
+
 class EmbeddingConfig(BaseModel):
-    provider: Literal["groq", "openai", "google", "huggingface", "local"] = "groq"
+    provider: Literal["openai", "huggingface", "google", "local"] = "openai"
     model_name: str = "text-embedding-3-small"
     api_key: Optional[str] = None
 
@@ -47,7 +48,7 @@ class EmbeddingConfig(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    provider: Literal["groq", "openai", "google", "anthropic", "local"] = "groq"
+    provider: Literal["openai", "anthropic", "groq", "google", "huggingface", "local"] = "openai"
     model_name: str = "gpt-4o-mini"
     temperature: float = 0.2
     max_tokens: int = 2048
@@ -71,10 +72,28 @@ class SystemContext(BaseModel):
 
 
 class AgentConfiguration(BaseModel):
-    """Root configuration object for the AI Agent."""
+    """Root configuration object for the application."""
+    database_config: DatabaseConfig = Field(default_factory=DatabaseConfig)
     system_context: SystemContext = Field(default_factory=SystemContext)
     llm_config: LLMConfig = Field(default_factory=LLMConfig)
     embedding_config: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
 
 
-config = AgentConfiguration()
+def load_config(file_path: str = "config.yaml") -> AgentConfiguration:
+    """
+    Loads configuration from a YAML file. 
+    Falls back to default values (and environment variables) if the file doesn't exist.
+    """
+    if not os.path.exists(file_path):
+        # We can either raise an error or return defaults. 
+        # Returning defaults is usually safer for initial dev/CI pipelines.
+        print(f"Warning: {file_path} not found. Using default configurations.")
+        return AgentConfiguration()
+    
+    with open(file_path, "r") as f:
+        yaml_data = yaml.safe_load(f) or {}
+        
+    return AgentConfiguration.model_validate(yaml_data)
+
+# Global instantiated config loaded automatically when this module is imported
+config = load_config("config.yaml")
