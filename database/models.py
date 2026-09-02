@@ -1,8 +1,8 @@
-from datetime import datetime, timezone
+import enum
 from typing import List, Optional
-
-from sqlalchemy import String, Float, Integer, ForeignKey, Text, DateTime
+from datetime import datetime, timezone
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy import String, Float, Integer, ForeignKey, Text, DateTime, Enum, Boolean
 
 
 class Base(DeclarativeBase):
@@ -11,26 +11,36 @@ class Base(DeclarativeBase):
     """
     pass
 
+class UserRole(str, enum.Enum):
+    CUSTOMER = "customer"
+    ADMIN = "admin"
 
-class Customer(Base):
+class User(Base):
     """
-    Represents a customer in the e-commerce system.
-    
-    Attributes:
-        id (int): Primary key.
-        name (str): Full name of the customer.
-        email (str): Unique email address.
-        phone (str, optional): Contact phone number.
-        orders (List[Order]): Collection of orders placed by the customer.
+    Unified User model for authentication and identity.
+    Access control is handled via the 'role' attribute.
     """
-    __tablename__ = 'customers'
+    __tablename__ = 'users'
     
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    password_hash: Mapped[Optional[str]] = mapped_column(String(255)) # For Flask Admin login
+    
+    role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.CUSTOMER, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    
     phone: Mapped[Optional[str]] = mapped_column(String(20))
     
-    orders: Mapped[List["Order"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), 
+        default=lambda: datetime.now(timezone.utc)
+    )
+    
+    orders: Mapped[List["Order"]] = relationship(
+        back_populates="customer", 
+        cascade="all, delete-orphan"
+    )
 
 
 class Product(Base):
@@ -71,7 +81,7 @@ class Order(Base):
     __tablename__ = 'orders'
     
     id: Mapped[int] = mapped_column(primary_key=True)
-    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), nullable=False)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="Pending")
     total_amount: Mapped[float] = mapped_column(Float, default=0.0)
     created_at: Mapped[datetime] = mapped_column(
@@ -79,7 +89,7 @@ class Order(Base):
         default=lambda: datetime.now(timezone.utc)
     )
     
-    customer: Mapped["Customer"] = relationship(back_populates="orders")
+    customer: Mapped["User"] = relationship(back_populates="orders")
     items: Mapped[List["OrderItem"]] = relationship(back_populates="order", cascade="all, delete-orphan")
 
 
