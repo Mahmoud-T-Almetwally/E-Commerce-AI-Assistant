@@ -10,6 +10,7 @@ PROVIDER_API_KEY_MAP: Dict[str, Optional[str]] = {
     "openai": "OPENAI_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
     "groq": "GROQ_API_KEY",
+    "google": "GOOGLE_API_KEY",
     "huggingface": "HUGGINGFACE_API_KEY",
     "local": None  # Local providers don't need an API key
 }
@@ -35,7 +36,7 @@ def resolve_api_key(provider: str, provided_key: Optional[str]) -> Optional[str]
 
 
 class EmbeddingConfig(BaseModel):
-    provider: Literal["groq", "openai", "huggingface", "local"] = "groq"
+    provider: Literal["groq", "openai", "google", "huggingface", "local"] = "groq"
     model_name: str = "text-embedding-3-small"
     api_key: Optional[str] = None
 
@@ -46,7 +47,7 @@ class EmbeddingConfig(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    provider: Literal["groq", "openai", "anthropic", "local"] = "groq"
+    provider: Literal["groq", "openai", "google", "anthropic", "local"] = "groq"
     model_name: str = "gpt-4o-mini"
     temperature: float = 0.2
     max_tokens: int = 2048
