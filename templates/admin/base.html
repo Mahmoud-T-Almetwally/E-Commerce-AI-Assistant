@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Admin Dashboard{% endblock %} - OmniCart</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+        .sidebar {
+            min-height: 100vh;
+            background-color: #212529;
+            color: white;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+        }
+        .sidebar a {
+            color: #adb5bd;
+            text-decoration: none;
+            padding: 12px 20px;
+            display: block;
+            border-radius: 6px;
+            margin: 4px 12px;
+            transition: all 0.2s ease;
+        }
+        .sidebar a:hover, .sidebar a.active {
+            background-color: #0d6efd;
+            color: white;
+        }
+        .sidebar .nav-icon {
+            margin-right: 10px;
+        }
+        .main-content {
+            padding: 30px;
+        }
+        .card {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.04);
+            margin-bottom: 24px;
+        }
+        .table-responsive {
+            border-radius: 12px;
+        }
+    </style>
+    {% block styles %}{% endblock %}
+</head>
+<body>
+    <div class="container-fluid p-0">
+        <div class="row g-0">
+            <div class="col-md-2 sidebar d-none d-md-block fixed-top h-100" style="width: 250px;">
+                <div class="p-4">
+                    <h4 class="text-white text-center fw-bold mb-0">
+                        <i class="bi bi-robot text-primary"></i> OmniCart AI
+                    </h4>
+                </div>
+                <hr class="text-secondary mx-3 mt-0">
+                <nav class="nav flex-column mt-3">
+                    <a href="{{ url_for('admin.dashboard_home') }}" class="{% if request.endpoint == 'admin.dashboard_home' %}active{% endif %}">
+                        <i class="bi bi-grid-1x2-fill nav-icon"></i> Dashboard
+                    </a>
+                    <a href="{{ url_for('admin.list_products') }}" class="{% if request.endpoint and 'product' in request.endpoint %}active{% endif %}">
+                        <i class="bi bi-box-seam-fill nav-icon"></i> Products
+                    </a>
+                    <a href="{{ url_for('admin.list_orders') }}" class="{% if request.endpoint == 'admin.list_orders' %}active{% endif %}">
+                        <i class="bi bi-cart-fill nav-icon"></i> Orders
+                    </a>
+                    <a href="{{ url_for('admin.list_customers') }}" class="{% if request.endpoint == 'admin.list_customers' %}active{% endif %}">
+                        <i class="bi bi-people-fill nav-icon"></i> Customers
+                    </a>
+                    <!-- RAG STUB -->
+                    <a href="#" class="{% if request.endpoint and 'knowledge' in request.endpoint %}active{% endif %}">
+                        <i class="bi bi-journal-text nav-icon"></i> Knowledge Base
+                    </a>
+                </nav>
+            </div>
+
+            <div class="col position-relative" style="margin-left: 250px;">
+                <header class="bg-white px-4 py-3 shadow-sm d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 text-dark fw-semibold">{% block header_title %}Admin Portal{% endblock %}</h5>
+                    <div class="dropdown">
+                        <button class="btn btn-light dropdown-toggle border-0" type="button" id="userMenu" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-person-circle"></i> {{ session.get('name', 'Admin') }}
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0" aria-labelledby="userMenu">
+                            <li><a class="dropdown-item text-danger" href="{{ url_for('auth.logout') }}"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
+                        </ul>
+                    </div>
+                </header>
+
+                <main class="main-content bg-light">
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show border-0 shadow-sm" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+
+                    {% block content %}{% endblock %}
+                </main>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
