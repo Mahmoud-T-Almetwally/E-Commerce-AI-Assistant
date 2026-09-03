@@ -116,6 +116,7 @@ class Product(Base):
         price (float): Current price of the product.
         stock_quantity (int): Number of units currently available.
         category (str): Categorization for organizational purposes.
+        tags (List[Tag]): Tags associated with the product
     """
     __tablename__ = 'products'
     
@@ -125,6 +126,7 @@ class Product(Base):
     price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     stock_quantity: Mapped[int] = mapped_column(Integer, default=0)
     category: Mapped[str] = mapped_column(String(100), nullable=False)
+    tags: Mapped[List["Tag"]] = relationship(secondary=product_tags, back_populates="products")
 
 
 class CartItem(Base):
