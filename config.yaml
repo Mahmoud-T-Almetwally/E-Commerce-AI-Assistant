@@ -1,9 +1,14 @@
-# config.yaml
+app_config:
+  debug: true
+  host: "0.0.0.0"
+  port: 5000
 
 database_config:
   url: "sqlite:///instance/ecommerce.db"
   chroma_persist_directory: "./instance/chroma_db"
   echo_queries: false
+  connect_args:
+    check_same_thread: false
 
 system_context:
   company_name: "Nexus Commerce"
@@ -16,5 +21,8 @@ llm_config:
   max_tokens: 1000
 
 embedding_config:
-  provider: "openai"
-  model_name: "text-embedding-3-small"
+  provider: "local"
+  model_name: "nomic-embed-text"
+
+meta_config:
+  enabled: false
