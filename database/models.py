@@ -18,7 +18,18 @@ class UserRole(str, enum.Enum):
 class User(Base):
     """
     Unified User model for authentication and identity.
-    Access control is handled via the 'role' attribute.
+
+    Attributes:
+        id (int): Primary Key.
+        email (str): Email of the User.
+        name (str): Name of the User.
+        password_hash (str): Stored password hash of the User.
+        role (UserRole): Role of the User, can be either 'customer' or 'admin'
+        is_active (bool): whether or not the User's account is active.
+        phone (Optional[str]): The phone number of the User, can be 9 or 11 digits.
+        created_at (datetime): Creation date of the account, defaults to 'datetime.now(timezone.utc)'.
+        cart_items (List[CartItem]): The list of Products in the User's Cart.
+        orders (List[Order]): List of orders the User has made. 
     """
     __tablename__ = 'users'
     
@@ -36,6 +47,8 @@ class User(Base):
         DateTime(timezone=True), 
         default=lambda: datetime.now(timezone.utc)
     )
+
+    cart_items: Mapped[List["CartItem"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     
     orders: Mapped[List["Order"]] = relationship(
         back_populates="customer", 
@@ -63,6 +76,29 @@ class Product(Base):
     price: Mapped[float] = mapped_column(Float, nullable=False)
     stock_quantity: Mapped[int] = mapped_column(Integer, default=0)
     category: Mapped[str] = mapped_column(String(100), nullable=False)
+
+
+class CartItem(Base):
+    """
+    Represents an active item in a user's shopping cart before checkout.
+
+    Attributes:
+        id (int): Primary Key.
+        user_id (int): ID of the User who placed the product in their cart.
+        product_id (int): ID of the product placed into the User's cart.
+        quantity (int): Amount of the product placed into the cart.
+        user (User): The User who placed the product in their cart.
+        product (Product): The product placed into the User's cart.
+    """
+    __tablename__ = 'cart_items'
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    
+    user: Mapped["User"] = relationship(back_populates="cart_items")
+    product: Mapped["Product"] = relationship()
 
 
 class Order(Base):
