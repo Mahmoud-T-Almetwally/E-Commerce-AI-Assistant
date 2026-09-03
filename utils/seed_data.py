@@ -8,6 +8,8 @@ from database.models import (
     CartItem, Order, OrderItem, KnowledgeDocument
 )
 
+from werkzeug.security import generate_password_hash
+
 def reset_database():
     """Drops all existing tables and recreates them to ensure a clean state."""
     print("Dropping existing tables...")
@@ -62,7 +64,7 @@ def generate_seed_data():
         admin = User(
             email="admin@store.com",
             name="System Admin",
-            password_hash="pbkdf2:sha256:dummy_hash_admin_123",
+            password_hash=generate_password_hash("Admin123!"),
             role=UserRole.ADMIN,
             is_active=True,
             phone="12345678901"
@@ -73,7 +75,7 @@ def generate_seed_data():
             customer = User(
                 email=f"customer{i}@example.com",
                 name=f"Customer Name {i}",
-                password_hash=f"pbkdf2:sha256:dummy_hash_user_{i}",
+                password_hash=generate_password_hash(f"dummy_hash_user_{i}"),
                 role=UserRole.CUSTOMER,
                 is_active=random.choices([True, False], weights=[90, 10])[0],
                 phone=f"010{random.randint(10000000, 99999999)}"
