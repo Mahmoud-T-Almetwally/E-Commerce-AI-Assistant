@@ -132,6 +132,11 @@ class Product(Base):
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     stock_quantity: Mapped[int] = mapped_column(Integer, default=0)
     category: Mapped[str] = mapped_column(String(100), nullable=False)
+    image_url: Mapped[str] = mapped_column(
+        String(255), 
+        default="/static/images/default-product.png",
+        server_default="/static/images/default-product.png"
+    )
     tags: Mapped[List["Tag"]] = relationship(secondary=product_tags, back_populates="products")
 
 

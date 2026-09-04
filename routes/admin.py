@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
 from database.db_setup import SessionLocal
-from database.models import Product, Order, User, UserRole, OrderStatus
+from database.models import Product, Order, User, UserRole, OrderStatus, Tag
 from routes.auth import admin_required
 
 admin_bp = Blueprint('admin', __name__)
@@ -19,45 +19,69 @@ def get_pagination(query, page, per_page):
     return items, total, total_pages
 
 
+def process_tags(db, tags_str: str):
+    """
+    Converts a comma-separated string of tags into a list of Tag objects.
+    Queries existing tags by name, and creates new ones if they don't exist.
+    """
+    if not tags_str.strip():
+        return []
+    
+    tag_names = list(set([t.strip() for t in tags_str.split(',') if t.strip()]))
+    tag_objects = []
+    
+    for name in tag_names:
+        tag = db.query(Tag).filter(func.lower(Tag.name) == name.lower()).first()
+        if not tag:
+            tag = Tag(name=name)
+            db.add(tag)
+        tag_objects.append(tag)
+        
+    return tag_objects
+
+
 def parse_product_form():
     """
-    Validates the product form. Returns (data, error_message).
-    `data` is None when validation fails.
+    Validates the product form. Returns (data, tags_str, error_message).
+    `data` and `tags_str` are None when validation fails.
     """
     name = (request.form.get('name') or '').strip()
     category = (request.form.get('category') or '').strip()
     description = request.form.get('description') or ''
     price_str = (request.form.get('price') or '').strip()
     stock_str = (request.form.get('stock_quantity') or '').strip()
+    
+    # New fields
+    image_url = (request.form.get('image_url') or '').strip()
+    tags_str = (request.form.get('tags') or '').strip()
 
     if not name or not category:
-        return None, 'Name and category are required.'
+        return None, None, 'Name and category are required.'
 
     try:
         price = float(price_str) if price_str else 0.0
         stock_quantity = int(stock_str) if stock_str else 0
     except (TypeError, ValueError):
-        return None, 'Price must be a number and stock quantity must be a whole number.'
+        return None, None, 'Price must be a number and stock quantity must be a whole number.'
 
     if price < 0 or stock_quantity < 0:
-        return None, 'Price and stock quantity cannot be negative.'
+        return None, None, 'Price and stock quantity cannot be negative.'
 
-    return {
+    data = {
         'name': name,
         'description': description,
         'price': price,
         'stock_quantity': stock_quantity,
-        'category': category
-    }, None
+        'category': category,
+        'image_url': image_url if image_url else "/static/images/default-product.png"
+    }
+
+    return data, tags_str, None
 
 
 @admin_bp.route('/')
 @admin_required
 def dashboard_home():
-    """
-    Overview page for the Admin Dashboard.
-    Calculates basic business statistics.
-    """
     with SessionLocal() as db:
         total_customers = db.query(User).filter(User.role == UserRole.CUSTOMER).count()
         total_orders = db.query(Order).count()
@@ -92,7 +116,7 @@ def dashboard_home():
 def list_products():
     page = max(request.args.get('page', 1, type=int), 1)
     with SessionLocal() as db:
-        query = db.query(Product).order_by(Product.id.desc())
+        query = db.query(Product).options(joinedload(Product.tags)).order_by(Product.id.desc())
         products, total, total_pages = get_pagination(query, page, per_page=20)
 
         return render_template(
@@ -105,14 +129,19 @@ def list_products():
 @admin_required
 def add_product():
     if request.method == 'POST':
-        data, error = parse_product_form()
+        data, tags_str, error = parse_product_form()
+        
         if error:
             flash(error, 'danger')
         else:
             with SessionLocal() as db:
                 try:
-                    db.add(Product(**data))
+                    new_product = Product(**data)
+                    new_product.tags = process_tags(db, tags_str)
+                    
+                    db.add(new_product)
                     db.commit()
+                    
                     flash('Product added successfully!', 'success')
                     return redirect(url_for('admin.list_products'))
                 except IntegrityError as e:
@@ -122,20 +151,22 @@ def add_product():
                     db.rollback()
                     flash(f'Error adding product: {e}', 'danger')
 
-    return render_template('admin/product_form.html', product=None)
+    return render_template('admin/product_form.html', product=None, tags_str="")
 
 
 @admin_bp.route('/products/<int:product_id>/edit', methods=['GET', 'POST'])
 @admin_required
 def edit_product(product_id):
     with SessionLocal() as db:
-        product = db.query(Product).filter(Product.id == product_id).first()
+        product = db.query(Product).options(joinedload(Product.tags)).filter(Product.id == product_id).first()
+        
         if not product:
             flash('Product not found.', 'danger')
             return redirect(url_for('admin.list_products'))
 
         if request.method == 'POST':
-            data, error = parse_product_form()
+            data, tags_str, error = parse_product_form()
+            
             if error:
                 flash(error, 'danger')
             else:
@@ -145,6 +176,9 @@ def edit_product(product_id):
                     product.price = data['price']
                     product.stock_quantity = data['stock_quantity']
                     product.category = data['category']
+                    product.image_url = data['image_url']
+                    
+                    product.tags = process_tags(db, tags_str)
 
                     db.commit()
                     flash('Product updated successfully!', 'success')
@@ -152,8 +186,10 @@ def edit_product(product_id):
                 except Exception as e:
                     db.rollback()
                     flash(f'Error updating product: {e}', 'danger')
-
-        return render_template('admin/product_form.html', product=product)
+                    
+        existing_tags = ", ".join(tag.name for tag in product.tags) if product.tags else ""
+        
+        return render_template('admin/product_form.html', product=product, tags_str=existing_tags)
 
 
 @admin_bp.route('/products/<int:product_id>/delete', methods=['POST'])
