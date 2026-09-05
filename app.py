@@ -1,12 +1,15 @@
-from flask import Flask, redirect, url_for
-from utils.config import config
+import logging
+from flask import Flask, flash, redirect, request
+from werkzeug.exceptions import RequestEntityTooLarge
 from database.db_setup import init_db
 
-from routes.auth import auth_bp
-from routes.admin import admin_bp
-from routes.rag import rag_bp
-# from routes.api import api_bp       # To be added later
-# from routes.webhook import webhook_bp # To be added later
+from routes import register_routes
+from utils.config import config
+
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 
 def create_app() -> Flask:
     """
@@ -15,27 +18,22 @@ def create_app() -> Flask:
     app = Flask(__name__)
     
     app.secret_key = config.flask_config.secret_key
+
+    app.config['MAX_CONTENT_LENGTH'] = config.flask_config.max_file_size_mb * 1024 * 1024
     
     init_db()
     
-    app.register_blueprint(auth_bp, url_prefix='/auth')
-    app.register_blueprint(admin_bp, url_prefix='/admin')
-    app.register_blueprint(rag_bp, url_prefix='/admin/knowledge')
+    register_routes(app)
     
-    @app.route('/')
-    def index():
-        """
-        Default route. For now, we redirect anyone hitting the root URL 
-        straight to the Admin Dashboard.
-        """
-        return redirect(url_for('admin.dashboard_home'))
+    @app.errorhandler(RequestEntityTooLarge)
+    def handle_file_too_large(e):
+        flash(f"File exceeds the maximum allowed size of {config.rag_config.max_file_size_mb} MB.", "danger")
+        return redirect(request.referrer or '/')
         
     return app
 
 if __name__ == '__main__':
     app = create_app()
-    
-    print(f"Starting server on http://{config.flask_config.host}:{config.flask_config.port}")
     app.run(
         host=config.flask_config.host,
         port=config.flask_config.port,
