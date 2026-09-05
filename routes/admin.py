@@ -22,15 +22,25 @@ def process_tags(db, tags_str: str):
         return []
     
     tag_names = list(set([t.strip() for t in tags_str.split(',') if t.strip()]))
-    tag_objects = []
-    
-    for name in tag_names:
-        tag = db.query(Tag).filter(func.lower(Tag.name) == name.lower()).first()
-        if not tag:
-            tag = Tag(name=name)
-            db.add(tag)
-        tag_objects.append(tag)
+    if not tag_names:
+        return []
         
+    lower_names = [name.lower() for name in tag_names]
+    
+    existing_tags = db.query(Tag).filter(func.lower(Tag.name).in_(lower_names)).all()
+    
+    existing_tag_map = {tag.name.lower(): tag for tag in existing_tags}
+    
+    tag_objects = []
+    for name in tag_names:
+        lower_name = name.lower()
+        if lower_name in existing_tag_map:
+            tag_objects.append(existing_tag_map[lower_name])
+        else:
+            new_tag = Tag(name=name)
+            db.add(new_tag)
+            tag_objects.append(new_tag)
+            
     return tag_objects
 
 
