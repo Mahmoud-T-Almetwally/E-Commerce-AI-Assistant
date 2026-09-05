@@ -1,0 +1,72 @@
+{% extends 'admin/base.html' %}
+
+{% block title %}{{ 'Edit' if doc else 'Add' }} Knowledge Document{% endblock %}
+{% block header_title %}{{ 'Edit Document' if doc else 'Add to Knowledge Base' }}{% endblock %}
+
+{% block content %}
+<!-- Variable setup to handle both normal loading and form-validation-error re-renders -->
+{% set current_title = (form_data.title if form_data else '') or (doc.title if doc else '') %}
+{% set current_content = (form_data.content if form_data else '') or (doc.content if doc else '') %}
+{% set current_type = (form_data.doc_type if form_data else '') or (doc.doc_type if doc else 'General') %}
+
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-4">
+                
+                <!-- Notice the enctype: Required for file uploads -->
+                <form method="POST" enctype="multipart/form-data">
+                    
+                    <!-- Only show file upload field when adding a NEW document -->
+                    {% if not doc %}
+                    <div class="mb-4 bg-primary bg-opacity-10 border border-primary border-opacity-25 rounded p-4 text-center">
+                        <i class="bi bi-cloud-arrow-up text-primary fs-2 mb-2"></i>
+                        <h6 class="fw-semibold text-dark">Upload a File (Optional)</h6>
+                        <p class="text-muted small mb-3">Upload a .txt, .pdf, or .docx file. The system will automatically extract its text and save it.</p>
+                        
+                        <div class="mx-auto" style="max-width: 400px;">
+                            <input type="file" name="file" class="form-control" accept=".txt,.pdf,.docx">
+                        </div>
+                    </div>
+
+                    <div class="position-relative mb-4 text-center">
+                        <hr class="text-muted">
+                        <span class="position-absolute top-50 start-50 translate-middle bg-white px-3 text-muted small fw-bold">OR ENTER MANUALLY</span>
+                    </div>
+                    {% endif %}
+
+                    <div class="row mb-3">
+                        <div class="col-md-8">
+                            <label class="form-label fw-semibold">Document Title</label>
+                            <input type="text" name="title" class="form-control" value="{{ current_title }}" placeholder="e.g. Return Policy 2026">
+                            <div class="form-text">Leave blank if uploading a file to use the file's name.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Document Type</label>
+                            <input type="text" name="doc_type" class="form-control" value="{{ current_type }}" placeholder="e.g. FAQ, Policy">
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Content</label>
+                        <textarea name="content" class="form-control font-monospace" rows="10" placeholder="Type or paste the knowledge text here...">{{ current_content }}</textarea>
+                        <div class="form-text">This text will be split into chunks and embedded into the Vector Database for the AI to search.</div>
+                    </div>
+
+                    <hr class="text-muted mt-4 mb-3">
+
+                    <div class="d-flex justify-content-end gap-2">
+                        <a href="{{ url_for('rag.list_knowledge') }}" class="btn btn-light border shadow-sm">Cancel</a>
+                        <button type="submit" class="btn btn-primary px-4 shadow-sm">
+                            <i class="bi bi-check2-circle"></i> {{ 'Save Changes' if doc else 'Add Document' }}
+                        </button>
+                    </div>
+                </form>
+
+            </div>
+        </div>
+        
+    </div>
+</div>
+{% endblock %}

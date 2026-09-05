@@ -1,4 +1,4 @@
-app_config:
+flask_config:
   debug: true
   host: "0.0.0.0"
   port: 5000
@@ -26,3 +26,11 @@ embedding_config:
 
 meta_config:
   enabled: false
+
+rag_config:
+  collection_name: "ecommerce_knowledge"
+  max_file_size_mb: 10
+  max_content_chars: 200000
+  supported_extensions: [".txt", ".pdf", ".docx"]
+  chunk_size: 1000
+  chunk_overlap: 200

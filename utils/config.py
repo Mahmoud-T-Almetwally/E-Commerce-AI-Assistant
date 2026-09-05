@@ -1,6 +1,6 @@
 import os
 import yaml
-from typing import Literal, Optional, Dict, Any
+from typing import Literal, Optional, Dict, Any, List
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, model_validator
 
@@ -44,6 +44,17 @@ class FlaskConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 5000
     debug: bool = True
+
+
+class RAGConfig(BaseModel):
+    """Configuration for RAG text chunking and ChromaDB settings."""
+    collection_name: str = "ecommerce_knowledge"
+    max_file_size_mb: int = Field(default=10)
+    max_content_chars: int = Field(default=200_000)
+    supported_extensions: List[str] = Field(default=[".txt", ".pdf", ".docx"])
+    chunk_size: int = 1000
+    chunk_overlap: int = 200
+    separators: List[str] = Field(default_factory=lambda: ["\n\n", "\n", ".", " ", ""])
 
 
 class MetaConfig(BaseModel):
@@ -108,6 +119,7 @@ class AgentConfiguration(BaseModel):
     system_context: SystemContext = Field(default_factory=SystemContext)
     llm_config: LLMConfig = Field(default_factory=LLMConfig)
     embedding_config: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
+    rag_config: RAGConfig = Field(default_factory=RAGConfig)
 
 
 def load_config(file_path: str = "config.yaml") -> AgentConfiguration:

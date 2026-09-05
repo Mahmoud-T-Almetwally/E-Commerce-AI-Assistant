@@ -73,8 +73,7 @@
                     <a href="{{ url_for('admin.list_customers') }}" class="{% if request.endpoint == 'admin.list_customers' %}active{% endif %}">
                         <i class="bi bi-people-fill nav-icon"></i> Customers
                     </a>
-                    <!-- RAG STUB -->
-                    <a href="#" class="{% if request.endpoint and 'knowledge' in request.endpoint %}active{% endif %}">
+                    <a href="{{ url_for('rag.list_knowledge') }}" class="{% if request.endpoint and 'rag' in request.endpoint %}active{% endif %}">
                         <i class="bi bi-journal-text nav-icon"></i> Knowledge Base
                     </a>
                 </nav>

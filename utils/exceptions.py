@@ -60,6 +60,25 @@ class AgentError(Exception):
     pass
 
 
+class RAGError(Exception):
+    """Base exception for RAG pipeline (embedding/vector-store) failures."""
+
+
+class EmbeddingError(RAGError):
+    """Raised when generating embeddings fails (network, provider, or timeout)."""
+    def __init__(self, message: str, retryable: bool = False):
+        self.retryable = retryable
+        super().__init__(message)
+
+
+class VectorStoreError(RAGError):
+    """Raised when reading from or writing to the vector database fails."""
+
+
+class TextExtractionError(RAGError):
+    """Raised when text cannot be extracted from an uploaded file."""
+
+
 class ToolExecutionError(AgentError):
     """Raised when a LangGraph tool encounters an unexpected error during execution."""
     def __init__(self, tool_name: str, error_msg: str):

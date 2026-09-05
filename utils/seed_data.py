@@ -7,6 +7,7 @@ from database.models import (
     Base, User, UserRole, OrderStatus, Tag, Product, 
     CartItem, Order, OrderItem, KnowledgeDocument
 )
+from database.rag_manager import rag_manager
 
 from werkzeug.security import generate_password_hash
 
@@ -157,6 +158,7 @@ def generate_seed_data():
                 doc_type="FAQ"
             )
         ]
+        rag_manager.resync(documents)
         db.add_all(documents)
 
         db.commit()

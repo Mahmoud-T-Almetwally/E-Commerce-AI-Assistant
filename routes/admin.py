@@ -8,15 +8,9 @@ from sqlalchemy.orm import joinedload
 from database.db_setup import SessionLocal
 from database.models import Product, Order, User, UserRole, OrderStatus, Tag
 from routes.auth import admin_required
+from utils.pagination import get_pagination
 
 admin_bp = Blueprint('admin', __name__)
-
-
-def get_pagination(query, page, per_page):
-    total = query.count()
-    total_pages = math.ceil(total / per_page) if total > 0 else 1
-    items = query.offset((page - 1) * per_page).limit(per_page).all()
-    return items, total, total_pages
 
 
 def process_tags(db, tags_str: str):

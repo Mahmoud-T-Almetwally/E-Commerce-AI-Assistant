@@ -4,6 +4,7 @@ from database.db_setup import init_db
 
 from routes.auth import auth_bp
 from routes.admin import admin_bp
+from routes.rag import rag_bp
 # from routes.api import api_bp       # To be added later
 # from routes.webhook import webhook_bp # To be added later
 
@@ -19,6 +20,7 @@ def create_app() -> Flask:
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(admin_bp, url_prefix='/admin')
+    app.register_blueprint(rag_bp, url_prefix='/admin/knowledge')
     
     @app.route('/')
     def index():
