@@ -15,6 +15,9 @@ from utils.file_extraction import extract_text
 from utils.pagination import get_pagination
 from utils.config import config
 
+import logging
+logger = logging.getLogger(__name__)
+
 rag_bp = Blueprint('rag', __name__)
 
 
@@ -110,7 +113,6 @@ def add_knowledge():
                 )
                 return _rerender_add_form(title, "", doc_type)
 
-            # Blank title? Derive it from the filename.
             if not title:
                 title = _file_stem(filename) or "Untitled Document"
 
@@ -139,11 +141,13 @@ def add_knowledge():
                 if doc_id is not None:
                     try:
                         rag_manager.delete_document(doc_id)
-                    except Exception:
-                        pass
+                    except Exception as chroma_error:
+                        logger.error(
+                            f"URGENT: Failed to rollback ChromaDB vectors for Doc ID {doc_id}. "
+                            f"Vectors are now orphaned. Chroma Error: {chroma_error}"
+                        )
+
                 flash(f"Error adding document: {e}", "danger")
-                # Re-render with the (possibly file-extracted) content so a
-                # late failure doesn't cost the user their upload.
                 return _rerender_add_form(title, content, doc_type)
 
     return render_template('admin/knowledge_form.html', doc=None, form_data=None)
@@ -199,8 +203,11 @@ def edit_knowledge(doc_id):
                         content=old_content,
                         doc_type=old_doc_type
                     )
-                except Exception:
-                    pass
+                except Exception as chroma_error:
+                    logger.error(
+                            f"URGENT: Failed to rollback ChromaDB vectors for Doc ID {doc_id}. "
+                            f"Vectors are now orphaned. Chroma Error: {chroma_error}"
+                        )
                 flash(f"Error updating document: {e}", "danger")
 
         return render_template('admin/knowledge_form.html', doc=doc, form_data=None)
@@ -235,8 +242,11 @@ def delete_knowledge(doc_id):
                         content=old_content,
                         doc_type=old_doc_type
                     )
-                except Exception:
-                    pass
+                except Exception as chroma_error:
+                    logger.error(
+                            f"URGENT: Failed to rollback ChromaDB vectors for Doc ID {doc_id}. "
+                            f"Vectors are now orphaned. Chroma Error: {chroma_error}"
+                        )
             flash(f"Error deleting document: {e}", "danger")
 
     return redirect(url_for('rag.list_knowledge'))
