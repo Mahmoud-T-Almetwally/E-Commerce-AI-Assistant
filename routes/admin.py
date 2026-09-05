@@ -1,7 +1,7 @@
-import math
+from datetime import datetime
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
@@ -119,13 +119,41 @@ def dashboard_home():
 @admin_required
 def list_products():
     page = max(request.args.get('page', 1, type=int), 1)
+    
+    search = request.args.get('search', '').strip()
+    category = request.args.get('category', '').strip()
+    tag = request.args.get('tag', '').strip()
+    min_price = request.args.get('min_price', '').strip()
+    max_price = request.args.get('max_price', '').strip()
+
     with SessionLocal() as db:
-        query = db.query(Product).options(joinedload(Product.tags)).order_by(Product.id.desc())
+        query = db.query(Product).options(joinedload(Product.tags))
+        
+        if search:
+            query = query.filter(or_(
+                Product.name.ilike(f"%{search}%"),
+                Product.description.ilike(f"%{search}%")
+            ))
+        if category:
+            query = query.filter(Product.category.ilike(f"%{category}%"))
+        if tag:
+            query = query.filter(Product.tags.any(Tag.name.ilike(f"%{tag}%")))
+            
+        try:
+            if min_price:
+                query = query.filter(Product.price >= float(min_price))
+            if max_price:
+                query = query.filter(Product.price <= float(max_price))
+        except ValueError:
+            flash("Invalid price filter format. Ignored.", "warning")
+
+        query = query.order_by(Product.id.desc())
         products, total, total_pages = get_pagination(query, page, per_page=20)
 
         return render_template(
             'admin/products.html',
-            products=products, page=page, total=total, total_pages=total_pages
+            products=products, page=page, total=total, total_pages=total_pages,
+            search=search, category=category, tag=tag, min_price=min_price, max_price=max_price
         )
 
 
@@ -219,18 +247,46 @@ def delete_product(product_id):
 @admin_required
 def list_orders():
     page = max(request.args.get('page', 1, type=int), 1)
+
+    status_filter = request.args.get('status', '').strip()
+    customer_search = request.args.get('customer', '').strip()
+    start_date = request.args.get('start_date', '').strip()
+    end_date = request.args.get('end_date', '').strip()
+
     with SessionLocal() as db:
-        query = (
-            db.query(Order)
-            .options(joinedload(Order.customer))
-            .order_by(Order.created_at.desc())
-        )
+        query = db.query(Order).options(joinedload(Order.customer))
+
+        if status_filter:
+            try:
+                query = query.filter(Order.status == OrderStatus(status_filter))
+            except ValueError:
+                pass
+                
+        if customer_search:
+            query = query.join(User).filter(or_(
+                User.name.ilike(f"%{customer_search}%"),
+                User.email.ilike(f"%{customer_search}%")
+            ))
+            
+        try:
+            if start_date:
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                query = query.filter(Order.created_at >= start_dt)
+            if end_date:
+                end_dt = datetime.strptime(end_date + " 23:59:59", "%Y-%m-%d %H:%M:%S")
+                query = query.filter(Order.created_at <= end_dt)
+        except ValueError:
+            flash("Invalid date format. Use YYYY-MM-DD.", "warning")
+
+        query = query.order_by(Order.created_at.desc())
         orders, total, total_pages = get_pagination(query, page, per_page=20)
         statuses = [status.value for status in OrderStatus]
 
         return render_template(
             'admin/orders.html',
-            orders=orders, statuses=statuses, page=page, total=total, total_pages=total_pages
+            orders=orders, statuses=statuses, page=page, total=total, total_pages=total_pages,
+            status_filter=status_filter, customer_search=customer_search, 
+            start_date=start_date, end_date=end_date
         )
 
 
@@ -258,11 +314,30 @@ def update_order_status(order_id):
 @admin_required
 def list_customers():
     page = max(request.args.get('page', 1, type=int), 1)
+    
+    search = request.args.get('search', '').strip()
+    is_active = request.args.get('is_active', '').strip()
+    
     with SessionLocal() as db:
-        query = db.query(User).filter(User.role == UserRole.CUSTOMER).order_by(User.created_at.desc())
+        query = db.query(User).filter(User.role == UserRole.CUSTOMER)
+        
+        if search:
+            query = query.filter(or_(
+                User.name.ilike(f"%{search}%"),
+                User.email.ilike(f"%{search}%"),
+                User.phone.ilike(f"%{search}%")
+            ))
+            
+        if is_active in ['true', '1', 'True']:
+            query = query.filter(User.is_active == True)
+        elif is_active in ['false', '0', 'False']:
+            query = query.filter(User.is_active == False)
+
+        query = query.order_by(User.created_at.desc())
         customers, total, total_pages = get_pagination(query, page, per_page=20)
 
         return render_template(
             'admin/customers.html',
-            customers=customers, page=page, total=total, total_pages=total_pages
+            customers=customers, page=page, total=total, total_pages=total_pages,
+            search=search, is_active=is_active
         )
