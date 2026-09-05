@@ -85,9 +85,7 @@ class RAGManager:
     def resync(self, documents) -> int:
         """
         Rebuilds the vector store from SQL rows: re-embeds every document and
-        deletes vectors whose doc_id no longer exists in SQL. Run this after
-        utils.seed_data (which inserts KnowledgeDocuments WITHOUT embedding
-        them) or to repair any SQL/ChromaDB desync.
+        deletes vectors whose doc_id no longer exists in SQL.
         Returns the number of documents re-embedded.
         """
         valid_ids = set()
@@ -95,11 +93,29 @@ class RAGManager:
             self.add_document(doc_id=doc.id, title=doc.title, content=doc.content, doc_type=doc.doc_type)
             valid_ids.add(doc.id)
 
-        result = self.vector_store.get(include=["metadatas"])
-        stored_ids = {md.get("doc_id") for md in (result.get("metadatas") or [])}
+        stored_ids = set()
+        offset = 0
+        limit = 1000
+        
+        while True:
+            result = self.vector_store.get(limit=limit, offset=offset, include=["metadatas"])
+            metadatas = result.get("metadatas") or []
+            
+            if not metadatas:
+                break
+                
+            for md in metadatas:
+                doc_id = md.get("doc_id")
+                if doc_id is not None:
+                    stored_ids.add(doc_id)
+                    
+            if len(metadatas) < limit:
+                break
+
+            offset += limit
+
         for stale_id in stored_ids - valid_ids:
-            if stale_id is not None:
-                self.delete_document(stale_id)
+            self.delete_document(stale_id)
 
         return len(valid_ids)
 
