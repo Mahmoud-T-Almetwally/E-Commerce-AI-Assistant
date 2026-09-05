@@ -239,7 +239,7 @@ def list_orders():
 def update_order_status(order_id):
     new_status_val = request.form.get('status')
     with SessionLocal() as db:
-        order = db.query(Order).filter(Order.id == order_id).first()
+        order = db.query(Order).filter(Order.id == order_id).with_for_update().first()
         if not order:
             flash('Order not found.', 'danger')
             return redirect(url_for('admin.list_orders'))
