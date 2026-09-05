@@ -5,6 +5,7 @@ Parsing happens from in-memory bytes — uploaded files are never written to dis
 """
 
 from io import BytesIO
+import charset_normalizer
 from utils.exceptions import TextExtractionError
 
 
@@ -35,30 +36,27 @@ def extract_text(data: bytes, extension: str) -> str:
 
 
 def _extract_txt(data: bytes) -> str:
-    try:
-        return data.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        return data.decode("latin-1", errors="replace")
+    detected = charset_normalizer.from_bytes(data).best()
+    if detected:
+        return str(detected)
+    
+    return data.decode("utf-8-sig", errors="replace")
 
 
 def _extract_pdf(data: bytes) -> str:
     try:
         from pypdf import PdfReader
-    except ImportError:
-        raise TextExtractionError(
-            "PDF support is unavailable: the 'pypdf' package is not installed "
-            "(pip install pypdf)."
-        )
+    except ImportError as e:
+        raise TextExtractionError(f"PDF library missing: {e}. Run 'pip install pypdf'") from e
+        
     try:
         reader = PdfReader(BytesIO(data))
         if reader.is_encrypted:
             raise TextExtractionError("Password-protected PDFs are not supported.")
         pages = [(page.extract_text() or "") for page in reader.pages]
         return "\n\n".join(pages)
-    except TextExtractionError:
-        raise
     except Exception as e:
-        raise TextExtractionError(f"Could not read this PDF: {e}") from e
+        raise TextExtractionError(f"Could not read this PDF: {str(e)}") from e
 
 
 def _extract_docx(data: bytes) -> str:
