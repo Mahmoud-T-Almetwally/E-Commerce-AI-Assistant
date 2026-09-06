@@ -55,7 +55,6 @@ def parse_product_form():
     price_str = (request.form.get('price') or '').strip()
     stock_str = (request.form.get('stock_quantity') or '').strip()
     
-    # New fields
     image_url = (request.form.get('image_url') or '').strip()
     tags_str = (request.form.get('tags') or '').strip()
 
@@ -341,3 +340,53 @@ def list_customers():
             customers=customers, page=page, total=total, total_pages=total_pages,
             search=search, is_active=is_active
         )
+
+@admin_bp.route('/users/create-admin', methods=['POST'])
+@admin_required
+def create_admin():
+    """
+    Creates a new administrator account.
+    Only existing admins can create new admin accounts.
+    """
+    name = (request.form.get('name') or '').strip()
+    email = (request.form.get('email') or '').strip().lower()
+    password = request.form.get('password', '')
+    phone = (request.form.get('phone') or '').strip()
+
+    errors = []
+    if not name:
+        errors.append('Name is required.')
+    if not email:
+        errors.append('Email is required.')
+    if not password or len(password) < 6:
+        errors.append('Password is required and must be at least 6 characters.')
+
+    if errors:
+        for error in errors:
+            flash(error, 'danger')
+        return redirect(url_for('admin.list_customers'))
+
+    with SessionLocal() as db:
+        existing = db.query(User).filter(User.email == email).first()
+        if existing:
+            flash(f'User with email "{email}" already exists.', 'danger')
+            return redirect(url_for('admin.list_customers'))
+
+        try:
+            from werkzeug.security import generate_password_hash
+            new_admin = User(
+                email=email,
+                name=name,
+                password_hash=generate_password_hash(password),
+                role=UserRole.ADMIN,
+                is_active=True,
+                phone=phone if phone else None
+            )
+            db.add(new_admin)
+            db.commit()
+            flash(f'Admin account "{name}" ({email}) created successfully.', 'success')
+        except Exception as e:
+            db.rollback()
+            flash(f'Failed to create admin account: {str(e)}', 'danger')
+
+    return redirect(url_for('admin.list_customers'))
