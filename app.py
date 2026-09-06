@@ -19,7 +19,7 @@ def create_app() -> Flask:
     
     app.secret_key = config.flask_config.secret_key
 
-    app.config['MAX_CONTENT_LENGTH'] = config.flask_config.max_file_size_mb * 1024 * 1024
+    app.config['MAX_CONTENT_LENGTH'] = config.rag_config.max_file_size_mb * 1024 * 1024
     
     init_db()
     

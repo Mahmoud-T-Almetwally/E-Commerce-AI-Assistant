@@ -158,8 +158,10 @@ def generate_seed_data():
                 doc_type="FAQ"
             )
         ]
-        rag_manager.resync(documents)
+        
         db.add_all(documents)
+        db.flush()
+        rag_manager.resync(documents)
 
         db.commit()
         print("Successfully seeded the database!")

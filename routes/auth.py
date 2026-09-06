@@ -31,6 +31,8 @@ def login():
     if session.get('user_id') and session.get('role') == UserRole.ADMIN.value:
         return redirect(url_for('admin.dashboard_home'))
 
+    next_page = request.args.get('next')
+
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
