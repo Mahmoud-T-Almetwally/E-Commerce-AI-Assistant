@@ -6,12 +6,17 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from database.db_setup import SessionLocal
 from database.models import User, UserRole
 
+import re
+from utils.extensions import limiter
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
 auth_bp = Blueprint('auth', __name__)
 
 
 def login_required(f):
     """
-    Decorator to ensure a user is logged in (any role).
+    Decorator to ensure a user is logged in.
     Use this on routes that require authentication but not necessarily admin privileges.
     """
     @wraps(f)
@@ -38,6 +43,7 @@ def admin_required(f):
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute", methods=["POST"])
 def login():
     """
     Handles authentication for both Admin and Customer users.
@@ -46,7 +52,7 @@ def login():
     if session.get('user_id'):
         if session.get('role') == UserRole.ADMIN.value:
             return redirect(url_for('admin.dashboard_home'))
-        return redirect(url_for('main.store'))
+        return redirect(url_for('store.index'))
 
     next_page = request.args.get('next')
 
@@ -66,6 +72,7 @@ def login():
                 session['user_id'] = user.id
                 session['role'] = user.role.value
                 session['name'] = user.name
+                session.permanent = True
 
                 flash(f'Welcome back, {user.name}!', 'success')
 
@@ -77,7 +84,7 @@ def login():
                 if user.role == UserRole.ADMIN:
                     return redirect(next_page or url_for('admin.dashboard_home'))
                 else:
-                    return redirect(next_page or url_for('main.store'))
+                    return redirect(next_page or url_for('store.index'))
             else:
                 flash('Invalid email or password.', 'danger')
 
@@ -85,6 +92,7 @@ def login():
 
 
 @auth_bp.route('/register', methods=['GET', 'POST'])
+@limiter.limit("5 per minute", methods=["POST"])
 def register():
     """
     Handles Customer registration.
@@ -94,7 +102,7 @@ def register():
         flash('You are already logged in.', 'info')
         if session.get('role') == UserRole.ADMIN.value:
             return redirect(url_for('admin.dashboard_home'))
-        return redirect(url_for('main.store'))
+        return redirect(url_for('store.index'))
 
     if request.method == 'POST':
         name = (request.form.get('name') or '').strip()
@@ -115,6 +123,10 @@ def register():
             errors.append('Password must be at least 6 characters long.')
         if password != confirm_password:
             errors.append('Passwords do not match.')
+        if not EMAIL_RE.match(email):
+            errors.append('Please enter a valid email address.')
+        if phone and not re.fullmatch(r"\d{9,11}", phone):
+            errors.append('Phone number must be 9 or 11 digits.')
 
         if errors:
             for error in errors:
@@ -159,4 +171,4 @@ def logout():
     """
     session.clear()
     flash('You have been logged out.', 'info')
-    return redirect(url_for('main.store'))
+    return redirect(url_for('store.index'))
