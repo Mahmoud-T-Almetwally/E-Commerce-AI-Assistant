@@ -1,19 +1,23 @@
+import hashlib
 import os
-from typing import List
 from functools import lru_cache
+from typing import Dict, List, Optional
 
-from langchain_core.documents import Document
 from langchain_chroma import Chroma
+from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from agent.providers import ModelFactory
 from utils.config import config
 
 
-import hashlib
-
-
 def _content_hash(title: str, content: str, doc_type: str) -> str:
+    """
+    Stable fingerprint of a document's embeddable content and metadata,
+    stored on every chunk so drift detection costs zero embedding calls.
+    If chunking settings ever change, fold a version string into this hash
+    so existing chunks get re-split.
+    """
     raw = f"{title}\x00{content}\x00{doc_type}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -54,6 +58,8 @@ class RAGManager:
                 f"Document {doc_id} produced no chunks (content is empty or whitespace-only)."
             )
 
+        content_hash = _content_hash(title, content, doc_type)
+
         documents, ids = [], []
         for i, chunk in enumerate(chunks):
             metadata = {
@@ -61,7 +67,7 @@ class RAGManager:
                 "title": title,
                 "doc_type": doc_type,
                 "chunk_index": i,
-                "content_hash": _content_hash(title, content, doc_type),
+                "content_hash": content_hash
             }
             documents.append(Document(page_content=f"{title}\n\n{chunk}", metadata=metadata))
             ids.append(f"doc_{doc_id}_chunk_{i}")
@@ -92,57 +98,22 @@ class RAGManager:
         """Retrieves the top k most relevant chunks for a given user query."""
         return self.vector_store.similarity_search(query, k=k)
 
-    def resync(self, documents) -> int:
-        """
-        Rebuilds the vector store from SQL rows: re-embeds every document and
-        deletes vectors whose doc_id no longer exists in SQL.
-        Returns the number of documents re-embedded.
-        """
-        valid_ids = set()
-        for doc in documents:
-            self.add_document(doc_id=doc.id, title=doc.title, content=doc.content, doc_type=doc.doc_type)
-            valid_ids.add(doc.id)
-
-        stored_ids = set()
-        offset = 0
-        limit = 1000
-        
-        while True:
-            result = self.vector_store.get(limit=limit, offset=offset, include=["metadatas"])
-            metadatas = result.get("metadatas") or []
-            
-            if not metadatas:
-                break
-                
-            for md in metadatas:
-                doc_id = md.get("doc_id")
-                if doc_id is not None:
-                    stored_ids.add(doc_id)
-                    
-            if len(metadatas) < limit:
-                break
-
-            offset += limit
-
-        for stale_id in stored_ids - valid_ids:
-            self.delete_document(stale_id)
-
-        return len(valid_ids)
-
-    def reconcile(self, documents) -> dict:
+    def reconcile(self, documents) -> Dict[str, int]:
         """
         Cheap drift repair: compares stored content hashes (a metadata-only
         Chroma read — no embeddings fetched, no API calls) against SQL and
         only re-embeds documents that are new or changed, deleting vectors
-        whose SQL rows no longer exist. Heals the orphaned-vector cases your
+        whose SQL rows no longer exist. Heals the orphaned-vector cases the
         CRUD rollback paths log as URGENT.
+
+        Returns a report: {"added": n, "updated": n, "removed": n}.
         """
         desired = {
             doc.id: _content_hash(doc.title, doc.content, doc.doc_type)
             for doc in documents
         }
 
-        stored: dict[int, str | None] = {}
+        stored: Dict[int, Optional[str]] = {}
         offset, limit = 0, 1000
         while True:
             result = self.vector_store.get(limit=limit, offset=offset, include=["metadatas"])
@@ -161,15 +132,57 @@ class RAGManager:
             report["removed"] += 1
 
         for doc in documents:
+            # Chunks predating content_hash metadata return None -> re-embedded once.
             if stored.get(doc.id) != desired[doc.id]:
                 self.add_document(doc.id, doc.title, doc.content, doc.doc_type)
                 report["added" if doc.id not in stored else "updated"] += 1
 
         return report
 
+    def resync(self, documents) -> int:
+        """
+        Full rebuild from SQL rows: re-embeds every document and deletes
+        vectors whose doc_id no longer exists. Returns the number of
+        documents re-embedded. Used by seeding and explicit rebuilds —
+        prefer reconcile() for routine drift healing.
+        """
+        valid_ids = set()
+        for doc in documents:
+            self.add_document(doc_id=doc.id, title=doc.title, content=doc.content, doc_type=doc.doc_type)
+            valid_ids.add(doc.id)
+
+        stored_ids = set()
+        offset = 0
+        limit = 1000
+
+        while True:
+            result = self.vector_store.get(limit=limit, offset=offset, include=["metadatas"])
+            metadatas = result.get("metadatas") or []
+
+            if not metadatas:
+                break
+
+            for md in metadatas:
+                doc_id = md.get("doc_id")
+                if doc_id is not None:
+                    stored_ids.add(doc_id)
+
+            if len(metadatas) < limit:
+                break
+
+            offset += limit
+
+        for stale_id in stored_ids - valid_ids:
+            self.delete_document(stale_id)
+
+        return len(valid_ids)
+
 
 @lru_cache(maxsize=1)
-def get_rag_manager() -> "RAGManager":
-    """Lazy singleton — Chroma + the embedding client are only initialised
-    when a route actually touches RAG, never at import time."""
+def get_rag_manager() -> RAGManager:
+    """
+    Lazy singleton — Chroma and the embedding client are only initialised
+    when a route actually touches RAG, never at import time. Failure to
+    resolve an API key surfaces here on first use, not at app boot.
+    """
     return RAGManager()

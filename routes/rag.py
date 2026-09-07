@@ -1,5 +1,5 @@
+import logging
 import os
-
 from types import SimpleNamespace
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
@@ -7,15 +7,12 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from database.db_setup import SessionLocal
 from database.models import KnowledgeDocument
 from database.rag_manager import get_rag_manager
-
 from routes.auth import admin_required
-
+from utils.config import config
 from utils.exceptions import TextExtractionError
 from utils.file_extraction import extract_text
 from utils.pagination import get_pagination
-from utils.config import config
 
-import logging
 logger = logging.getLogger(__name__)
 
 rag_bp = Blueprint('rag', __name__)
@@ -30,7 +27,7 @@ def _read_knowledge_form():
 
 
 def _validate_knowledge_form(title: str, content: str):
-    """Shared validation for add and edit (edit previously validated nothing)."""
+    """Shared validation for add and edit."""
     if not title:
         return "Title is required."
     if not content:
@@ -82,7 +79,7 @@ def add_knowledge():
     if request.method == 'POST':
         title, content, doc_type = _read_knowledge_form()
         uploaded = request.files.get('file')
-        
+
         if uploaded and uploaded.filename:
             filename = uploaded.filename
             ext = os.path.splitext(filename)[1].lower()
@@ -121,8 +118,6 @@ def add_knowledge():
             flash(error, "danger")
             return _rerender_add_form(title, content, doc_type)
 
-        rag_manager = get_rag_manager()
-
         with SessionLocal() as db:
             doc_id = None
             try:
@@ -131,25 +126,27 @@ def add_knowledge():
                 db.flush()
                 doc_id = new_doc.id
 
-                rag_manager.add_document(
+                get_rag_manager().add_document(
                     doc_id=doc_id, title=title, content=content, doc_type=doc_type
                 )
 
                 db.commit()
                 flash("Knowledge document added and embedded successfully!", "success")
                 return redirect(url_for('rag.list_knowledge'))
-            except Exception as e:
+            except Exception:
                 db.rollback()
+                logger.exception("Failed to add knowledge document (title=%r)", title)
                 if doc_id is not None:
                     try:
-                        rag_manager.delete_document(doc_id)
-                    except Exception as chroma_error:
-                        logger.error(
-                            f"URGENT: Failed to rollback ChromaDB vectors for Doc ID {doc_id}. "
-                            f"Vectors are now orphaned. Chroma Error: {chroma_error}"
+                        get_rag_manager().delete_document(doc_id)
+                    except Exception:
+                        logger.exception(
+                            "URGENT: Failed to rollback ChromaDB vectors for Doc ID %s. "
+                            "Vectors are orphaned; the startup reconcile will heal them.",
+                            doc_id
                         )
 
-                flash(f"Error adding document: {e}", "danger")
+                flash("Failed to add the document. Please try again.", "danger")
                 return _rerender_add_form(title, content, doc_type)
 
     return render_template('admin/knowledge_form.html', doc=None, form_data=None)
@@ -177,10 +174,7 @@ def edit_knowledge(doc_id):
                     form_data=SimpleNamespace(title=title, content=content, doc_type=doc_type)
                 )
 
-            
             old_title, old_content, old_doc_type = doc.title, doc.content, doc.doc_type
-
-            rag_manager = get_rag_manager()
 
             try:
                 doc.title = title
@@ -188,7 +182,7 @@ def edit_knowledge(doc_id):
                 doc.doc_type = doc_type
                 db.flush()
 
-                rag_manager.update_document(
+                get_rag_manager().update_document(
                     doc_id=doc.id,
                     title=title,
                     content=content,
@@ -198,21 +192,23 @@ def edit_knowledge(doc_id):
                 db.commit()
                 flash("Knowledge document updated successfully!", "success")
                 return redirect(url_for('rag.list_knowledge'))
-            except Exception as e:
+            except Exception:
                 db.rollback()
+                logger.exception("Failed to update knowledge document %s", doc_id)
                 try:
-                    rag_manager.update_document(
+                    get_rag_manager().update_document(
                         doc_id=doc.id,
                         title=old_title,
                         content=old_content,
                         doc_type=old_doc_type
                     )
-                except Exception as chroma_error:
-                    logger.error(
-                            f"URGENT: Failed to rollback ChromaDB vectors for Doc ID {doc_id}. "
-                            f"Vectors are now orphaned. Chroma Error: {chroma_error}"
-                        )
-                flash(f"Error updating document: {e}", "danger")
+                except Exception:
+                    logger.exception(
+                        "URGENT: Failed to rollback ChromaDB vectors for Doc ID %s. "
+                        "Vectors are stale; the startup reconcile will heal them.",
+                        doc_id
+                    )
+                flash("Failed to update the document. Please try again.", "danger")
 
         return render_template('admin/knowledge_form.html', doc=doc, form_data=None)
 
@@ -229,31 +225,30 @@ def delete_knowledge(doc_id):
 
         old_title, old_content, old_doc_type = doc.title, doc.content, doc.doc_type
         vectors_deleted = False
-
-        rag_manager = get_rag_manager()
-
         try:
-            rag_manager.delete_document(doc_id=doc.id)
+            get_rag_manager().delete_document(doc_id=doc.id)
             vectors_deleted = True
 
             db.delete(doc)
             db.commit()
             flash("Knowledge document deleted successfully.", "success")
-        except Exception as e:
+        except Exception:
             db.rollback()
+            logger.exception("Failed to delete knowledge document %s", doc_id)
             if vectors_deleted:
                 try:
-                    rag_manager.add_document(
+                    get_rag_manager().add_document(
                         doc_id=doc.id,
                         title=old_title,
                         content=old_content,
                         doc_type=old_doc_type
                     )
-                except Exception as chroma_error:
-                    logger.error(
-                            f"URGENT: Failed to rollback ChromaDB vectors for Doc ID {doc_id}. "
-                            f"Vectors are now orphaned. Chroma Error: {chroma_error}"
-                        )
-            flash(f"Error deleting document: {e}", "danger")
+                except Exception:
+                    logger.exception(
+                        "URGENT: Failed to rollback ChromaDB deletion for Doc ID %s. "
+                        "SQL row will be re-embedded by the startup reconcile.",
+                        doc_id
+                    )
+            flash("Failed to delete the document. Please try again.", "danger")
 
     return redirect(url_for('rag.list_knowledge'))

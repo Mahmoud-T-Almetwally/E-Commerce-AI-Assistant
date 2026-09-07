@@ -5,9 +5,9 @@ from flask import Flask, flash, redirect, request
 from flask_wtf.csrf import CSRFError
 from werkzeug.exceptions import RequestEntityTooLarge
 
-from database.rag_manager import get_rag_manager
-from database.db_setup import init_db, SessionLocal
+from database.db_setup import SessionLocal, init_db
 from database.models import KnowledgeDocument
+from database.rag_manager import get_rag_manager
 from routes import register_routes
 from utils.config import config
 from utils.extensions import csrf, limiter
@@ -19,7 +19,11 @@ DEFAULT_SECRET = "dev-secret-key-change-in-production"
 
 
 def _reconcile_vector_store() -> None:
-    """Heals SQL↔Chroma drift at boot; never blocks startup on failure."""
+    """
+    Heals SQL <-> ChromaDB drift at boot (orphaned vectors, manual DB edits).
+    Hash-based: documents whose content is unchanged cost zero embedding
+    calls. Never blocks startup — RAG degrades gracefully on failure.
+    """
     try:
         with SessionLocal() as db:
             docs = db.query(KnowledgeDocument).all()
@@ -34,6 +38,9 @@ def _reconcile_vector_store() -> None:
 
 
 def create_app() -> Flask:
+    """
+    Application factory to create and configure the Flask instance.
+    """
     app = Flask(__name__)
     app.secret_key = config.flask_config.secret_key
 
@@ -52,9 +59,11 @@ def create_app() -> Flask:
     limiter.init_app(app)
 
     init_db()
+
     if config.rag_config.sync_on_startup:
         _reconcile_vector_store()
-    register_routes(app)  # must csrf.exempt(webhook_bp)
+
+    register_routes(app)
 
     @app.errorhandler(RequestEntityTooLarge)
     def handle_file_too_large(e):
@@ -79,5 +88,5 @@ if __name__ == '__main__':
     app.run(
         host=config.flask_config.host,
         port=config.flask_config.port,
-        debug=config.flask_config.debug,
+        debug=config.flask_config.debug
     )

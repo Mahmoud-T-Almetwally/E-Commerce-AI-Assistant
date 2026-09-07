@@ -1,15 +1,29 @@
+"""
+Database seeding: drops, recreates, and populates the store with
+deterministic demo data (random.seed(42)) for consistent demos/tests.
+
+Run from the project root:  python -m utils.seed_data
+Requires an embedding provider key — knowledge documents are vectorised.
+"""
+
 import random
+from decimal import Decimal
 
 from sqlalchemy.exc import IntegrityError
+from werkzeug.security import generate_password_hash
 
 from database.db_setup import engine, SessionLocal, init_db
 from database.models import (
-    Base, User, UserRole, OrderStatus, Tag, Product, 
+    Base, User, UserRole, OrderStatus, Tag, Product,
     CartItem, Order, OrderItem, KnowledgeDocument
 )
 from database.rag_manager import get_rag_manager
 
-from werkzeug.security import generate_password_hash
+# Demo credentials — local/demo use only. To be documented in the README.
+ADMIN_EMAIL = "admin@store.com"
+ADMIN_PASSWORD = "Admin123!"
+DEMO_CUSTOMER_PASSWORD = "Customer123!"
+
 
 def reset_database():
     """Drops all existing tables and recreates them to ensure a clean state."""
@@ -18,10 +32,13 @@ def reset_database():
     print("Creating tables...")
     init_db()
 
+
 def generate_seed_data():
     """Generates mock data for all models and inserts it into the database."""
+    random.seed(42)  # reproducible demo data
+
     db = SessionLocal()
-    
+
     try:
         print("Seeding Tags...")
         tag_names = ["Sale", "Electronics", "Wireless", "Gaming", "Home", "Office", "New Arrival", "Refurbished", "Limited Edition", "Eco-friendly"]
@@ -36,23 +53,23 @@ def generate_seed_data():
             "Audio": ["Noise Cancelling Headphones", "Earbuds Pro", "Studio Mics", "Bluetooth Speaker"],
             "Accessories": ["Wireless Mouse", "Mechanical Keyboard", "USB-C Hub", "Laptop Stand", "Webcam"]
         }
-        
+
         products = []
         for i in range(1, 51):
             category = random.choice(list(categories.keys()))
             base_name = random.choice(categories[category])
-            
+
             product = Product(
                 name=f"{base_name} Gen {random.randint(1, 5)} - Model {i}",
                 description=f"High-quality {category.lower()} designed for professionals and enthusiasts. Experience unmatched performance.",
-                price=round(random.uniform(19.99, 1499.99), 2),
+                price=Decimal(str(round(random.uniform(19.99, 1499.99), 2))),
                 stock_quantity=random.randint(0, 200),
                 category=category
             )
             products.append(product)
-        
+
         db.add_all(products)
-        db.flush() 
+        db.flush()
 
         for tag in tags:
             sampled_products = random.sample(products, random.randint(5, 15))
@@ -61,30 +78,30 @@ def generate_seed_data():
 
         print("Seeding Users...")
         users = []
-        
+
         admin = User(
-            email="admin@store.com",
+            email=ADMIN_EMAIL,
             name="System Admin",
-            password_hash=generate_password_hash("Admin123!"),
+            password_hash=generate_password_hash(ADMIN_PASSWORD),
             role=UserRole.ADMIN,
             is_active=True,
             phone="12345678901"
         )
         users.append(admin)
-        
+
         for i in range(1, 21):
             customer = User(
                 email=f"customer{i}@example.com",
                 name=f"Customer Name {i}",
-                password_hash=generate_password_hash(f"dummy_hash_user_{i}"),
+                password_hash=generate_password_hash(DEMO_CUSTOMER_PASSWORD),
                 role=UserRole.CUSTOMER,
                 is_active=random.choices([True, False], weights=[90, 10])[0],
                 phone=f"010{random.randint(10000000, 99999999)}"
             )
             users.append(customer)
-            
+
         db.add_all(users)
-        db.flush() 
+        db.flush()
 
         print("Seeding Cart Items...")
         cart_items = []
@@ -99,29 +116,29 @@ def generate_seed_data():
                     )
                     cart_items.append(cart_item)
         db.add_all(cart_items)
-        
+
         print("Seeding Orders and Order Items...")
         order_items = []
         order_statuses = list(OrderStatus)
-        
+
         for customer in users[1:]:
             for _ in range(random.randint(0, 4)):
                 order = Order(
                     customer_id=customer.id,
                     status=random.choice(order_statuses),
-                    total_amount=0.0 # Will be calculated below
+                    total_amount=Decimal("0.00")  # calculated below
                 )
 
                 db.add(order)
                 db.flush()
 
-                total_amount = 0.0
+                total_amount = Decimal("0.00")
                 purchased_products = random.sample(products, random.randint(1, 5))
-                
+
                 for product in purchased_products:
                     qty = random.randint(1, 3)
                     unit_price = product.price
-                    
+
                     order_item = OrderItem(
                         order_id=order.id,
                         product_id=product.id,
@@ -129,10 +146,10 @@ def generate_seed_data():
                         unit_price=unit_price
                     )
                     order_items.append(order_item)
-                    total_amount += (float(unit_price) * qty)
-                
-                order.total_amount = round(total_amount, 2)
-        
+                    total_amount += unit_price * qty  # exact Decimal arithmetic
+
+                order.total_amount = total_amount
+
         db.add_all(order_items)
 
         print("Seeding Knowledge Documents...")
@@ -158,13 +175,15 @@ def generate_seed_data():
                 doc_type="FAQ"
             )
         ]
-        
+
         db.add_all(documents)
         db.flush()
         get_rag_manager().resync(documents)
 
         db.commit()
         print("Successfully seeded the database!")
+        print(f"  Admin login:    {ADMIN_EMAIL} / {ADMIN_PASSWORD}")
+        print(f"  Customer login: customer1@example.com / {DEMO_CUSTOMER_PASSWORD}")
 
     except IntegrityError as e:
         db.rollback()

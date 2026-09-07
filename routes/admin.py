@@ -1,16 +1,34 @@
+import logging
+import re
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
+from werkzeug.security import generate_password_hash
 
 from database.db_setup import SessionLocal
 from database.models import Product, Order, User, UserRole, OrderStatus, Tag
-from routes.auth import admin_required
+from routes.auth import EMAIL_RE, PHONE_RE, admin_required
 from utils.pagination import get_pagination
+from utils.sanitizers import escape_like
 
 admin_bp = Blueprint('admin', __name__)
+logger = logging.getLogger(__name__)
+
+
+ALLOWED_STATUS_TRANSITIONS = {
+    OrderStatus.PENDING:    {OrderStatus.PROCESSING, OrderStatus.CANCELLED},
+    OrderStatus.PROCESSING: {OrderStatus.SHIPPED, OrderStatus.CANCELLED},
+    OrderStatus.SHIPPED:    {OrderStatus.DELIVERED},
+    OrderStatus.DELIVERED:  set(),
+    OrderStatus.CANCELLED:  set(),
+}
+
+
+MAX_PRICE = Decimal("99999999.99")
 
 
 def process_tags(db, tags_str: str):
@@ -20,17 +38,17 @@ def process_tags(db, tags_str: str):
     """
     if not tags_str.strip():
         return []
-    
+
     tag_names = list(set([t.strip() for t in tags_str.split(',') if t.strip()]))
     if not tag_names:
         return []
-        
+
     lower_names = [name.lower() for name in tag_names]
-    
+
     existing_tags = db.query(Tag).filter(func.lower(Tag.name).in_(lower_names)).all()
-    
+
     existing_tag_map = {tag.name.lower(): tag for tag in existing_tags}
-    
+
     tag_objects = []
     for name in tag_names:
         lower_name = name.lower()
@@ -40,21 +58,27 @@ def process_tags(db, tags_str: str):
             new_tag = Tag(name=name)
             db.add(new_tag)
             tag_objects.append(new_tag)
-            
+
     return tag_objects
+
+
+def purge_orphan_tags(db):
+    """Removes tags no longer attached to any product (after edits/deletes)."""
+    db.query(Tag).filter(~Tag.products.any()).delete(synchronize_session=False)
 
 
 def parse_product_form():
     """
     Validates the product form. Returns (data, tags_str, error_message).
-    `data` and `tags_str` are None when validation fails.
+    `data` and `tags_str` are None when validation fails. Prices are parsed
+    as Decimal (matching the Numeric column) with at most 2 decimal places.
     """
     name = (request.form.get('name') or '').strip()
     category = (request.form.get('category') or '').strip()
     description = request.form.get('description') or ''
     price_str = (request.form.get('price') or '').strip()
     stock_str = (request.form.get('stock_quantity') or '').strip()
-    
+
     image_url = (request.form.get('image_url') or '').strip()
     tags_str = (request.form.get('tags') or '').strip()
 
@@ -62,18 +86,34 @@ def parse_product_form():
         return None, None, 'Name and category are required.'
 
     try:
-        price = float(price_str) if price_str else 0.0
-        stock_quantity = int(stock_str) if stock_str else 0
-    except (TypeError, ValueError):
-        return None, None, 'Price must be a number and stock quantity must be a whole number.'
+        price = Decimal(price_str) if price_str else Decimal("0.00")
+    except InvalidOperation:
+        return None, None, 'Price must be a valid number (e.g., 19.99).'
 
-    if price < 0 or stock_quantity < 0:
-        return None, None, 'Price and stock quantity cannot be negative.'
+    if not price.is_finite():
+        return None, None, 'Price must be a valid number (e.g., 19.99).'
+
+    if price.as_tuple().exponent < -2:
+        return None, None, 'Price supports at most 2 decimal places.'
+
+    if price < 0:
+        return None, None, 'Price cannot be negative.'
+
+    if price > MAX_PRICE:
+        return None, None, f'Price exceeds the supported maximum of {MAX_PRICE}.'
+
+    try:
+        stock_quantity = int(stock_str) if stock_str else 0
+    except ValueError:
+        return None, None, 'Stock quantity must be a whole number.'
+
+    if stock_quantity < 0:
+        return None, None, 'Stock quantity cannot be negative.'
 
     data = {
         'name': name,
         'description': description,
-        'price': price,
+        'price': price.quantize(Decimal("0.01")),
         'stock_quantity': stock_quantity,
         'category': category,
         'image_url': image_url if image_url else "/static/images/default-product.png"
@@ -118,7 +158,7 @@ def dashboard_home():
 @admin_required
 def list_products():
     page = max(request.args.get('page', 1, type=int), 1)
-    
+
     search = request.args.get('search', '').strip()
     category = request.args.get('category', '').strip()
     tag = request.args.get('tag', '').strip()
@@ -127,17 +167,18 @@ def list_products():
 
     with SessionLocal() as db:
         query = db.query(Product).options(joinedload(Product.tags))
-        
+
         if search:
+            escaped = escape_like(search)
             query = query.filter(or_(
-                Product.name.ilike(f"%{search}%"),
-                Product.description.ilike(f"%{search}%")
+                Product.name.ilike(f"%{escaped}%", escape="\\"),
+                Product.description.ilike(f"%{escaped}%", escape="\\")
             ))
         if category:
-            query = query.filter(Product.category.ilike(f"%{category}%"))
+            query = query.filter(Product.category.ilike(f"%{escape_like(category)}%", escape="\\"))
         if tag:
-            query = query.filter(Product.tags.any(Tag.name.ilike(f"%{tag}%")))
-            
+            query = query.filter(Product.tags.any(Tag.name.ilike(f"%{escape_like(tag)}%", escape="\\")))
+
         try:
             if min_price:
                 query = query.filter(Product.price >= float(min_price))
@@ -161,7 +202,7 @@ def list_products():
 def add_product():
     if request.method == 'POST':
         data, tags_str, error = parse_product_form()
-        
+
         if error:
             flash(error, 'danger')
         else:
@@ -169,18 +210,20 @@ def add_product():
                 try:
                     new_product = Product(**data)
                     new_product.tags = process_tags(db, tags_str)
-                    
+
                     db.add(new_product)
                     db.commit()
-                    
+
                     flash('Product added successfully!', 'success')
                     return redirect(url_for('admin.list_products'))
-                except IntegrityError as e:
+                except IntegrityError:
                     db.rollback()
-                    flash(f'Error adding product: {e.orig}', 'danger')
-                except Exception as e:
+                    logger.exception("Integrity error while adding product %r", data.get('name'))
+                    flash('A database constraint prevented adding this product. Please review the values and try again.', 'danger')
+                except Exception:
                     db.rollback()
-                    flash(f'Error adding product: {e}', 'danger')
+                    logger.exception("Unexpected error while adding product %r", data.get('name'))
+                    flash('An unexpected error occurred while adding the product. Please try again.', 'danger')
 
     return render_template('admin/product_form.html', product=None, tags_str="")
 
@@ -190,14 +233,14 @@ def add_product():
 def edit_product(product_id):
     with SessionLocal() as db:
         product = db.query(Product).options(joinedload(Product.tags)).filter(Product.id == product_id).first()
-        
+
         if not product:
             flash('Product not found.', 'danger')
             return redirect(url_for('admin.list_products'))
 
         if request.method == 'POST':
             data, tags_str, error = parse_product_form()
-            
+
             if error:
                 flash(error, 'danger')
             else:
@@ -208,18 +251,21 @@ def edit_product(product_id):
                     product.stock_quantity = data['stock_quantity']
                     product.category = data['category']
                     product.image_url = data['image_url']
-                    
+
                     product.tags = process_tags(db, tags_str)
 
                     db.commit()
+                    purge_orphan_tags(db)
+                    db.commit()
                     flash('Product updated successfully!', 'success')
                     return redirect(url_for('admin.list_products'))
-                except Exception as e:
+                except Exception:
                     db.rollback()
-                    flash(f'Error updating product: {e}', 'danger')
-                    
+                    logger.exception("Failed to update product %s", product_id)
+                    flash('An unexpected error occurred while updating the product. Please try again.', 'danger')
+
         existing_tags = ", ".join(tag.name for tag in product.tags) if product.tags else ""
-        
+
         return render_template('admin/product_form.html', product=product, tags_str=existing_tags)
 
 
@@ -232,10 +278,16 @@ def delete_product(product_id):
             try:
                 db.delete(product)
                 db.commit()
+                purge_orphan_tags(db)
+                db.commit()
                 flash('Product deleted successfully.', 'success')
             except IntegrityError:
                 db.rollback()
                 flash('Cannot delete this product: it is referenced by existing orders or shopping carts.', 'danger')
+            except Exception:
+                db.rollback()
+                logger.exception("Failed to delete product %s", product_id)
+                flash('An unexpected error occurred while deleting the product.', 'danger')
         else:
             flash('Product not found.', 'danger')
 
@@ -260,13 +312,14 @@ def list_orders():
                 query = query.filter(Order.status == OrderStatus(status_filter))
             except ValueError:
                 pass
-                
+
         if customer_search:
+            escaped = escape_like(customer_search)
             query = query.join(User).filter(or_(
-                User.name.ilike(f"%{customer_search}%"),
-                User.email.ilike(f"%{customer_search}%")
+                User.name.ilike(f"%{escaped}%", escape="\\"),
+                User.email.ilike(f"%{escaped}%", escape="\\")
             ))
-            
+
         try:
             if start_date:
                 start_dt = datetime.strptime(start_date, "%Y-%m-%d")
@@ -284,7 +337,7 @@ def list_orders():
         return render_template(
             'admin/orders.html',
             orders=orders, statuses=statuses, page=page, total=total, total_pages=total_pages,
-            status_filter=status_filter, customer_search=customer_search, 
+            status_filter=status_filter, customer_search=customer_search,
             start_date=start_date, end_date=end_date
         )
 
@@ -298,13 +351,42 @@ def update_order_status(order_id):
         if not order:
             flash('Order not found.', 'danger')
             return redirect(url_for('admin.list_orders'))
+
         try:
-            order.status = OrderStatus(new_status_val)
+            new_status = OrderStatus(new_status_val)
+        except ValueError:
+            flash(f'Invalid status: {new_status_val}', 'danger')
+            return redirect(url_for('admin.list_orders'))
+
+        if new_status == order.status:
+            flash(f"Order #{order.id} is already '{order.status.value}'.", 'info')
+            return redirect(url_for('admin.list_orders'))
+
+        if new_status not in ALLOWED_STATUS_TRANSITIONS.get(order.status, set()):
+            flash(
+                f"Cannot move order #{order.id} from '{order.status.value}' "
+                f"to '{new_status.value}'.",
+                'danger'
+            )
+            return redirect(url_for('admin.list_orders'))
+
+        try:
+            # Business rule: cancelling an order returns its items to inventory.
+            if new_status == OrderStatus.CANCELLED:
+                for item in order.items:
+                    db.execute(
+                        update(Product)
+                        .where(Product.id == item.product_id)
+                        .values(stock_quantity=Product.stock_quantity + item.quantity)
+                    )
+
+            order.status = new_status
             db.commit()
             flash(f'Order #{order.id} status updated to {order.status.value}.', 'success')
-        except ValueError:
+        except Exception:
             db.rollback()
-            flash(f'Invalid status: {new_status_val}', 'danger')
+            logger.exception("Failed to update status for order %s", order_id)
+            flash('An unexpected error occurred while updating the order status.', 'danger')
 
     return redirect(url_for('admin.list_orders'))
 
@@ -313,20 +395,21 @@ def update_order_status(order_id):
 @admin_required
 def list_customers():
     page = max(request.args.get('page', 1, type=int), 1)
-    
+
     search = request.args.get('search', '').strip()
     is_active = request.args.get('is_active', '').strip()
-    
+
     with SessionLocal() as db:
         query = db.query(User).filter(User.role == UserRole.CUSTOMER)
-        
+
         if search:
+            escaped = escape_like(search)
             query = query.filter(or_(
-                User.name.ilike(f"%{search}%"),
-                User.email.ilike(f"%{search}%"),
-                User.phone.ilike(f"%{search}%")
+                User.name.ilike(f"%{escaped}%", escape="\\"),
+                User.email.ilike(f"%{escaped}%", escape="\\"),
+                User.phone.ilike(f"%{escaped}%", escape="\\")
             ))
-            
+
         if is_active in ['true', '1', 'True']:
             query = query.filter(User.is_active == True)
         elif is_active in ['false', '0', 'False']:
@@ -340,6 +423,7 @@ def list_customers():
             customers=customers, page=page, total=total, total_pages=total_pages,
             search=search, is_active=is_active
         )
+
 
 @admin_bp.route('/users/create-admin', methods=['POST'])
 @admin_required
@@ -358,8 +442,12 @@ def create_admin():
         errors.append('Name is required.')
     if not email:
         errors.append('Email is required.')
+    elif not EMAIL_RE.match(email):
+        errors.append('Please enter a valid email address.')
     if not password or len(password) < 6:
         errors.append('Password is required and must be at least 6 characters.')
+    if phone and not PHONE_RE.fullmatch(phone):
+        errors.append('Phone number must be 9 or 11 digits (digits only).')
 
     if errors:
         for error in errors:
@@ -369,11 +457,10 @@ def create_admin():
     with SessionLocal() as db:
         existing = db.query(User).filter(User.email == email).first()
         if existing:
-            flash(f'User with email "{email}" already exists.', 'danger')
+            flash(f'A user with email "{email}" already exists.', 'danger')
             return redirect(url_for('admin.list_customers'))
 
         try:
-            from werkzeug.security import generate_password_hash
             new_admin = User(
                 email=email,
                 name=name,
@@ -385,8 +472,9 @@ def create_admin():
             db.add(new_admin)
             db.commit()
             flash(f'Admin account "{name}" ({email}) created successfully.', 'success')
-        except Exception as e:
+        except Exception:
             db.rollback()
-            flash(f'Failed to create admin account: {str(e)}', 'danger')
+            logger.exception("Failed to create admin account %s", email)
+            flash('Failed to create the admin account. Please try again.', 'danger')
 
     return redirect(url_for('admin.list_customers'))

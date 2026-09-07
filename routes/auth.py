@@ -1,17 +1,20 @@
+import logging
+import re
 from functools import wraps
 from urllib.parse import urlparse
-from werkzeug.security import check_password_hash, generate_password_hash
+
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from database.db_setup import SessionLocal
 from database.models import User, UserRole
-
-import re
 from utils.extensions import limiter
 
-EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-
 auth_bp = Blueprint('auth', __name__)
+logger = logging.getLogger(__name__)
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+PHONE_RE = re.compile(r"\d{9}|\d{11}")
 
 
 def login_required(f):
@@ -43,7 +46,7 @@ def admin_required(f):
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
-@limiter.limit("5 per minute", methods=["POST"])
+@limiter.limit("10 per minute", methods=["POST"])
 def login():
     """
     Handles authentication for both Admin and Customer users.
@@ -72,7 +75,7 @@ def login():
                 session['user_id'] = user.id
                 session['role'] = user.role.value
                 session['name'] = user.name
-                session.permanent = True
+                session.permanent = True  # activates PERMANENT_SESSION_LIFETIME
 
                 flash(f'Welcome back, {user.name}!', 'success')
 
@@ -117,21 +120,21 @@ def register():
             errors.append('Full name is required.')
         if not email:
             errors.append('Email address is required.')
+        elif not EMAIL_RE.match(email):
+            errors.append('Please enter a valid email address.')
         if not password:
             errors.append('Password is required.')
         elif len(password) < 6:
             errors.append('Password must be at least 6 characters long.')
         if password != confirm_password:
             errors.append('Passwords do not match.')
-        if not EMAIL_RE.match(email):
-            errors.append('Please enter a valid email address.')
-        if phone and not re.fullmatch(r"\d{9,11}", phone):
-            errors.append('Phone number must be 9 or 11 digits.')
+        if phone and not PHONE_RE.fullmatch(phone):
+            errors.append('Phone number must be 9 or 11 digits (digits only).')
 
         if errors:
             for error in errors:
                 flash(error, 'danger')
-            return render_template('auth/register.html', 
+            return render_template('auth/register.html',
                                    name=name, email=email, phone=phone)
 
         with SessionLocal() as db:
@@ -156,9 +159,10 @@ def register():
                 flash('Account created successfully! Please log in.', 'success')
                 return redirect(url_for('auth.login'))
 
-            except Exception as e:
+            except Exception:
                 db.rollback()
-                flash(f'Registration failed: {str(e)}', 'danger')
+                logger.exception("Registration failed for %s", email)
+                flash('Registration failed due to an unexpected error. Please try again.', 'danger')
 
     return render_template('auth/register.html')
 
