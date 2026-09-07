@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.embeddings import Embeddings
 
-from utils.exceptions import ConfigurationError
+from utils.exceptions import ConfigurationError, UnsupportedProviderError
 from utils.config import LLMConfig, EmbeddingConfig
 
 
@@ -33,7 +33,7 @@ class OpenAIProvider(BaseProvider):
             model=config.model_name,
             temperature=config.temperature,
             max_tokens=config.max_tokens,
-            api_key=config.api_key,
+            api_key=config.get_api_key(),
             max_retries=3,
             timeout=60
         )
@@ -46,7 +46,7 @@ class OpenAIProvider(BaseProvider):
             
         return OpenAIEmbeddings(
             model=config.model_name,
-            api_key=config.api_key,
+            api_key=config.get_api_key(),
             max_retries=3,
             timeout=30
         )
@@ -63,7 +63,7 @@ class AnthropicProvider(BaseProvider):
             model_name=config.model_name,
             temperature=config.temperature,
             max_tokens=config.max_tokens,
-            api_key=config.api_key,
+            api_key=config.get_api_key(),
             max_retries=3,
             timeout=60
         )
@@ -83,7 +83,7 @@ class GroqProvider(BaseProvider):
             model_name=config.model_name,
             temperature=config.temperature,
             max_tokens=config.max_tokens,
-            api_key=config.api_key,
+            api_key=config.get_api_key(),
             max_retries=3,
             timeout=60
         )
@@ -103,7 +103,7 @@ class GoogleProvider(BaseProvider):
             model=config.model_name,
             temperature=config.temperature,
             max_tokens=config.max_tokens,
-            api_key=config.api_key,
+            api_key=config.get_api_key(),
             max_retries=3,
             timeout=60
         )
@@ -116,7 +116,7 @@ class GoogleProvider(BaseProvider):
             
         return GoogleGenerativeAIEmbeddings(
             model=config.model_name,
-            api_key=config.api_key
+            api_key=config.get_api_key()
         )
 
 
@@ -131,7 +131,7 @@ class HuggingFaceProvider(BaseProvider):
             repo_id=config.model_name,
             temperature=config.temperature,
             max_new_tokens=config.max_tokens,
-            huggingfacehub_api_token=config.api_key,
+            huggingfacehub_api_token=config.get_api_key(),
             timeout=60
         )
         return ChatHuggingFace(llm=llm_backend)
@@ -144,7 +144,7 @@ class HuggingFaceProvider(BaseProvider):
             
         return HuggingFaceEndpointEmbeddings(
             model=config.model_name, 
-            huggingfacehub_api_token=config.api_key
+            huggingfacehub_api_token=config.get_api_key()
         )
 
 
@@ -195,9 +195,9 @@ class ModelFactory:
     def _get_provider(cls, name: str) -> BaseProvider:
         provider_key = name.lower()
         if provider_key not in cls._providers:
-            raise ValueError(
-                f"Unsupported Provider '{provider_key}'. "
-                f"Supported providers: {list(cls._providers.keys())}"
+            raise UnsupportedProviderError(
+                provider=provider_key,
+                supported=list(cls._providers.keys())
             )
             
         if provider_key not in cls._instances:

@@ -67,6 +67,7 @@ class RAGConfig(BaseModel):
     supported_extensions: List[str] = Field(default=[".txt", ".pdf", ".docx"])
     chunk_size: int = 1000
     chunk_overlap: int = 200
+    sync_on_startup: bool = True
     separators: List[str] = Field(default_factory=lambda: ["\n\n", "\n", ".", " ", ""])
 
 
@@ -78,7 +79,7 @@ class MetaConfig(BaseModel):
 
 
 class DatabaseConfig(BaseModel):
-    url: str = Field(default_factory=lambda: os.environ.get("DATABASE_URL", "sqlite:///instance/ecommerce.db"))
+    url: str = Field(default_factory=lambda: os.environ.get("DATABASE_URL") or f"sqlite:///{(PROJECT_ROOT / 'instance' / 'ecommerce.db').as_posix()}")
     chroma_persist_directory: str = Field(default_factory=lambda: os.environ.get("CHROMA_DB_DIR", "./instance/chroma_db"))
     echo_queries: bool = False
     connect_args: Dict[str, Any] = Field(default_factory=lambda: {"check_same_thread": False})

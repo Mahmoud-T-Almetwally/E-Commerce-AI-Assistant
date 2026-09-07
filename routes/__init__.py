@@ -1,4 +1,5 @@
 from flask import Flask
+# from utils.extensions import csrf
 
 
 from .auth import auth_bp
@@ -11,9 +12,12 @@ def register_routes(app: Flask):
     """
     Registers all Flask Blueprints with the main application.
     """
-    app.register_blueprint(auth_bp, url_prefix='/admin')
+    app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp, url_prefix='/admin')
     app.register_blueprint(rag_bp, url_prefix='/admin/knowledge')
     app.register_blueprint(store_bp)
-    
-    # app.register_blueprint(webhook_bp, url_prefix='/webhook')
+
+    # enable via config
+    # if config.meta_config.enabled:
+    #     app.register_blueprint(webhook_bp, url_prefix='/webhook')
+    #     csrf.exempt(webhook_bp)

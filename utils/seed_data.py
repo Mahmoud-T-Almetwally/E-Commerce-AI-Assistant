@@ -7,7 +7,7 @@ from database.models import (
     Base, User, UserRole, OrderStatus, Tag, Product, 
     CartItem, Order, OrderItem, KnowledgeDocument
 )
-from database.rag_manager import rag_manager
+from database.rag_manager import get_rag_manager
 
 from werkzeug.security import generate_password_hash
 
@@ -161,7 +161,7 @@ def generate_seed_data():
         
         db.add_all(documents)
         db.flush()
-        rag_manager.resync(documents)
+        get_rag_manager().resync(documents)
 
         db.commit()
         print("Successfully seeded the database!")
