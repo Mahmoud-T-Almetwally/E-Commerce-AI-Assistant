@@ -6,7 +6,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from database.db_setup import SessionLocal
 from database.models import KnowledgeDocument
-from database.rag_manager import rag_manager
+from database.rag_manager import get_rag_manager
 
 from routes.auth import admin_required
 
@@ -121,6 +121,8 @@ def add_knowledge():
             flash(error, "danger")
             return _rerender_add_form(title, content, doc_type)
 
+        rag_manager = get_rag_manager()
+
         with SessionLocal() as db:
             doc_id = None
             try:
@@ -178,6 +180,8 @@ def edit_knowledge(doc_id):
             
             old_title, old_content, old_doc_type = doc.title, doc.content, doc.doc_type
 
+            rag_manager = get_rag_manager()
+
             try:
                 doc.title = title
                 doc.content = content
@@ -225,6 +229,9 @@ def delete_knowledge(doc_id):
 
         old_title, old_content, old_doc_type = doc.title, doc.content, doc.doc_type
         vectors_deleted = False
+
+        rag_manager = get_rag_manager()
+
         try:
             rag_manager.delete_document(doc_id=doc.id)
             vectors_deleted = True

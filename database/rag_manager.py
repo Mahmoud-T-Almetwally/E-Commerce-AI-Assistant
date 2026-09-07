@@ -1,5 +1,6 @@
 import os
 from typing import List
+from functools import lru_cache
 
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
@@ -120,4 +121,8 @@ class RAGManager:
         return len(valid_ids)
 
 
-rag_manager = RAGManager()
+@lru_cache(maxsize=1)
+def get_rag_manager() -> "RAGManager":
+    """Lazy singleton — Chroma + the embedding client are only initialised
+    when a route actually touches RAG, never at import time."""
+    return RAGManager()
