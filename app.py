@@ -5,7 +5,9 @@ from flask import Flask, flash, redirect, request
 from flask_wtf.csrf import CSRFError
 from werkzeug.exceptions import RequestEntityTooLarge
 
-from database.db_setup import init_db
+from database.rag_manager import get_rag_manager
+from database.db_setup import init_db, SessionLocal
+from database.models import KnowledgeDocument
 from routes import register_routes
 from utils.config import config
 from utils.extensions import csrf, limiter
@@ -14,6 +16,21 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 DEFAULT_SECRET = "dev-secret-key-change-in-production"
+
+
+def _reconcile_vector_store() -> None:
+    """Heals SQL↔Chroma drift at boot; never blocks startup on failure."""
+    try:
+        with SessionLocal() as db:
+            docs = db.query(KnowledgeDocument).all()
+        report = get_rag_manager().reconcile(docs)
+        if any(report.values()):
+            logger.info("Vector store reconciled: %s", report)
+    except Exception:
+        logger.exception(
+            "Vector store reconciliation failed — RAG may serve stale "
+            "content until the next successful sync."
+        )
 
 
 def create_app() -> Flask:
@@ -35,6 +52,8 @@ def create_app() -> Flask:
     limiter.init_app(app)
 
     init_db()
+    if config.rag_config.sync_on_startup:
+        _reconcile_vector_store()
     register_routes(app)  # must csrf.exempt(webhook_bp)
 
     @app.errorhandler(RequestEntityTooLarge)

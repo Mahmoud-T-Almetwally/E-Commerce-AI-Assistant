@@ -10,6 +10,14 @@ from agent.providers import ModelFactory
 from utils.config import config
 
 
+import hashlib
+
+
+def _content_hash(title: str, content: str, doc_type: str) -> str:
+    raw = f"{title}\x00{content}\x00{doc_type}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 class RAGManager:
     """
     Manages text chunking, embeddings, and vector database operations.
@@ -52,7 +60,8 @@ class RAGManager:
                 "doc_id": doc_id,
                 "title": title,
                 "doc_type": doc_type,
-                "chunk_index": i
+                "chunk_index": i,
+                "content_hash": _content_hash(title, content, doc_type),
             }
             documents.append(Document(page_content=f"{title}\n\n{chunk}", metadata=metadata))
             ids.append(f"doc_{doc_id}_chunk_{i}")
@@ -119,6 +128,44 @@ class RAGManager:
             self.delete_document(stale_id)
 
         return len(valid_ids)
+
+    def reconcile(self, documents) -> dict:
+        """
+        Cheap drift repair: compares stored content hashes (a metadata-only
+        Chroma read — no embeddings fetched, no API calls) against SQL and
+        only re-embeds documents that are new or changed, deleting vectors
+        whose SQL rows no longer exist. Heals the orphaned-vector cases your
+        CRUD rollback paths log as URGENT.
+        """
+        desired = {
+            doc.id: _content_hash(doc.title, doc.content, doc.doc_type)
+            for doc in documents
+        }
+
+        stored: dict[int, str | None] = {}
+        offset, limit = 0, 1000
+        while True:
+            result = self.vector_store.get(limit=limit, offset=offset, include=["metadatas"])
+            metadatas = result.get("metadatas") or []
+            for md in metadatas:
+                if md.get("doc_id") is not None:
+                    stored[md["doc_id"]] = md.get("content_hash")
+            if len(metadatas) < limit:
+                break
+            offset += limit
+
+        report = {"added": 0, "updated": 0, "removed": 0}
+
+        for stale_id in set(stored) - set(desired):
+            self.delete_document(stale_id)
+            report["removed"] += 1
+
+        for doc in documents:
+            if stored.get(doc.id) != desired[doc.id]:
+                self.add_document(doc.id, doc.title, doc.content, doc.doc_type)
+                report["added" if doc.id not in stored else "updated"] += 1
+
+        return report
 
 
 @lru_cache(maxsize=1)
