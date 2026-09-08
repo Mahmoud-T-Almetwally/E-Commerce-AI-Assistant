@@ -1,7 +1,7 @@
 import logging
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
-from sqlalchemy import or_, update
+from sqlalchemy import or_, update, func
 from sqlalchemy.orm import joinedload
 
 from database.db_setup import SessionLocal
@@ -15,6 +15,22 @@ logger = logging.getLogger(__name__)
 
 store_bp = Blueprint('store', __name__)
 
+STORE_SORT_OPTIONS = {
+    'newest': (Product.id, 'desc'),
+    'price_asc': (Product.price, 'asc'),
+    'price_desc': (Product.price, 'desc'),
+    'name': (Product.name, 'asc'),
+}
+
+@store_bp.context_processor
+def inject_cart_count():
+    """Cart badge count — only evaluated for store blueprint views."""
+    user_id = session.get('user_id')
+    if not user_id:
+        return {'cart_count': 0}
+    with SessionLocal() as db:
+        count = db.query(func.sum(CartItem.quantity)).filter(CartItem.user_id == user_id).scalar()
+    return {'cart_count': count or 0}
 
 @store_bp.route('/')
 def index():
@@ -55,14 +71,36 @@ def list_products():
         except ValueError:
             flash("Invalid price filter format. Ignored.", "warning")
 
-        query = query.order_by(Product.id.desc())
+        sort = request.args.get('sort', 'newest')
+        if sort not in STORE_SORT_OPTIONS:
+            sort = 'newest'
+        sort_col, sort_dir = STORE_SORT_OPTIONS[sort]
+        query = query.order_by(sort_col.desc() if sort_dir == 'desc' else sort_col.asc())
 
         products, total, total_pages = get_pagination(query, page, per_page=12)
+
+        trending_rows = (
+            db.query(Product, func.sum(OrderItem.quantity).label('units'))
+            .join(OrderItem, OrderItem.product_id == Product.id)
+            .join(Order, Order.id == OrderItem.order_id)
+            .filter(Order.status != OrderStatus.CANCELLED)
+            .group_by(Product.id)
+            .order_by(func.sum(OrderItem.quantity).desc())
+            .limit(4)
+            .all()
+        )
+        trending = [
+            {"id": p.id, "name": p.name, "category": p.category,
+             "price": p.price, "units": r or 0}
+            for p, r in trending_rows
+        ]
 
         return render_template(
             'store/products.html',
             products=products, page=page, total=total, total_pages=total_pages,
-            search=search, category=category, tag=tag, min_price=min_price, max_price=max_price
+            search=search, category=category, tag=tag,
+            min_price=min_price, max_price=max_price,
+            sort=sort, trending=trending,
         )
 
 
@@ -76,7 +114,14 @@ def product_detail(product_id):
             flash('Product not found.', 'danger')
             return redirect(url_for('store.list_products'))
 
-        return render_template('store/product_detail.html', product=product)
+        related = (
+            db.query(Product)
+            .filter(Product.category == product.category, Product.id != product.id)
+            .order_by(func.random())
+            .limit(4)
+            .all()
+        )
+        return render_template('store/product_detail.html', product=product, related=related)
 
 
 @store_bp.route('/cart', methods=['GET'])
@@ -260,7 +305,9 @@ def list_orders():
     """Protected route for users to view their past orders."""
     user_id = session.get('user_id')
     with SessionLocal() as db:
-        orders = db.query(Order).filter(
+        orders = db.query(Order).options(
+            joinedload(Order.items).joinedload(OrderItem.product)
+        ).filter(
             Order.customer_id == user_id
         ).order_by(Order.created_at.desc()).all()
 

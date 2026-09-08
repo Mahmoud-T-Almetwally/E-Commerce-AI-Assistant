@@ -1,6 +1,5 @@
 import logging
-import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
@@ -10,10 +9,11 @@ from sqlalchemy.orm import joinedload
 from werkzeug.security import generate_password_hash
 
 from database.db_setup import SessionLocal
-from database.models import Product, Order, User, UserRole, OrderStatus, Tag
+from database.models import Product, Order, OrderItem, User, UserRole, OrderStatus, Tag
 from routes.auth import EMAIL_RE, PHONE_RE, admin_required
 from utils.pagination import get_pagination
 from utils.sanitizers import escape_like
+from utils.sorting import apply_sorting
 
 admin_bp = Blueprint('admin', __name__)
 logger = logging.getLogger(__name__)
@@ -128,13 +128,96 @@ def dashboard_home():
     with SessionLocal() as db:
         total_customers = db.query(User).filter(User.role == UserRole.CUSTOMER).count()
         total_orders = db.query(Order).count()
+        active_orders = db.query(Order).filter(Order.status != OrderStatus.CANCELLED).count()
 
         revenue = db.query(func.sum(Order.total_amount)).filter(
             Order.status != OrderStatus.CANCELLED
         ).scalar()
         total_revenue = float(revenue) if revenue else 0.0
+        aov = total_revenue / active_orders if active_orders else 0.0
+
+        new_customers = db.query(User).filter(
+            User.role == UserRole.CUSTOMER,
+            User.created_at >= datetime.now(timezone.utc) - timedelta(days=30)
+        ).count()
 
         low_stock_items = db.query(Product).filter(Product.stock_quantity <= 5).count()
+        low_stock = (
+            db.query(Product)
+            .filter(Product.stock_quantity <= 5)
+            .order_by(Product.stock_quantity.asc())
+            .limit(6)
+            .all()
+        )
+
+        # --- Revenue, last 7 days (chart-ready) ---
+        cutoff = datetime.now(timezone.utc) - timedelta(days=6)
+        rows = (
+            db.query(
+                func.date(Order.created_at).label("day"),
+                func.sum(Order.total_amount).label("revenue"),
+                func.count(Order.id).label("orders"),
+            )
+            .filter(Order.created_at >= cutoff, Order.status != OrderStatus.CANCELLED)
+            .group_by(func.date(Order.created_at))
+            .order_by(func.date(Order.created_at))
+            .all()
+        )
+        by_day = {str(r.day): (float(r.revenue or 0), r.orders) for r in rows}
+
+        daily, daily_total = [], 0.0
+        for i in range(6, -1, -1):
+            day = datetime.now(timezone.utc) - timedelta(days=i)
+            rev, count = by_day.get(day.strftime("%Y-%m-%d"), (0.0, 0))
+            daily_total += rev
+            daily.append({
+                "label": day.strftime("%a"),
+                "date": day.strftime("%b %d"),
+                "revenue": rev,
+                "orders": count,
+            })
+        daily_max = max((d["revenue"] for d in daily), default=0)
+        for d in daily:
+            d["pct"] = round(d["revenue"] / daily_max * 100, 1) if daily_max else 0
+
+        # --- Orders by status ---
+        status_counts = dict(
+            db.query(Order.status, func.count(Order.id)).group_by(Order.status).all()
+        )
+        STATUS_COLORS = {
+            "pending": "#f59e0b", "processing": "#3b82f6", "shipped": "#8b5cf6",
+            "delivered": "#10b981", "cancelled": "#ef4444",
+        }
+        total_status = sum(status_counts.values())
+        status_segments, cursor = [], 0.0
+        for s in OrderStatus:
+            count = status_counts.get(s, 0)
+            if not count:
+                continue
+            pct = count / total_status * 100
+            status_segments.append({
+                "status": s.value, "count": count,
+                "start": round(cursor, 2), "end": round(cursor + pct, 2),
+                "color": STATUS_COLORS[s.value],
+            })
+            cursor += pct
+
+        trending_rows = (
+            db.query(Product, func.sum(OrderItem.quantity).label("units"))
+            .join(OrderItem, OrderItem.product_id == Product.id)
+            .join(Order, Order.id == OrderItem.order_id)
+            .filter(Order.status != OrderStatus.CANCELLED)
+            .group_by(Product.id)
+            .order_by(func.sum(OrderItem.quantity).desc())
+            .limit(5)
+            .all()
+        )
+        max_units = max((r or 0 for p, r in trending_rows), default=0)
+        trending = [
+            {"id": p.id, "name": p.name, "units": r or 0,
+             "pct": round((r or 0) / max_units * 100) if max_units else 0}
+            for p, r in trending_rows
+        ]
 
         recent_orders = (
             db.query(Order)
@@ -146,11 +229,13 @@ def dashboard_home():
 
         return render_template(
             'admin/dashboard.html',
-            total_customers=total_customers,
-            total_orders=total_orders,
-            total_revenue=total_revenue,
-            low_stock_items=low_stock_items,
-            recent_orders=recent_orders
+            total_customers=total_customers, total_orders=total_orders,
+            active_orders=active_orders, total_revenue=total_revenue, aov=aov,
+            new_customers=new_customers,
+            low_stock_items=low_stock_items, low_stock=low_stock,
+            daily=daily, daily_total=daily_total,
+            status_segments=status_segments, trending=trending,
+            recent_orders=recent_orders,
         )
 
 
@@ -187,13 +272,27 @@ def list_products():
         except ValueError:
             flash("Invalid price filter format. Ignored.", "warning")
 
-        query = query.order_by(Product.id.desc())
+        query, sort, direction = apply_sorting(
+            query,
+            {
+                'id': Product.id,
+                'name': Product.name,
+                'category': Product.category,
+                'price': Product.price,
+                'stock_quantity': Product.stock_quantity,
+            },
+            default='id',
+            default_direction='desc',
+        )
+
         products, total, total_pages = get_pagination(query, page, per_page=20)
 
         return render_template(
             'admin/products.html',
             products=products, page=page, total=total, total_pages=total_pages,
-            search=search, category=category, tag=tag, min_price=min_price, max_price=max_price
+            search=search, category=category, tag=tag,
+            min_price=min_price, max_price=max_price,
+            sort=sort, direction=direction,
         )
 
 
@@ -305,7 +404,10 @@ def list_orders():
     end_date = request.args.get('end_date', '').strip()
 
     with SessionLocal() as db:
-        query = db.query(Order).options(joinedload(Order.customer))
+        query = db.query(Order).options(
+            joinedload(Order.customer),
+            joinedload(Order.items),
+        )
 
         if status_filter:
             try:
@@ -330,7 +432,16 @@ def list_orders():
         except ValueError:
             flash("Invalid date format. Use YYYY-MM-DD.", "warning")
 
-        query = query.order_by(Order.created_at.desc())
+        query, sort, direction = apply_sorting(
+            query,
+            {
+                'created_at': Order.created_at,
+                'total_amount': Order.total_amount,
+                'status': Order.status,
+            },
+            default='created_at',
+            default_direction='desc',
+        )
         orders, total, total_pages = get_pagination(query, page, per_page=20)
         statuses = [status.value for status in OrderStatus]
 
@@ -338,7 +449,8 @@ def list_orders():
             'admin/orders.html',
             orders=orders, statuses=statuses, page=page, total=total, total_pages=total_pages,
             status_filter=status_filter, customer_search=customer_search,
-            start_date=start_date, end_date=end_date
+            start_date=start_date, end_date=end_date,
+            sort=sort, direction=direction,
         )
 
 
@@ -415,13 +527,22 @@ def list_customers():
         elif is_active in ['false', '0', 'False']:
             query = query.filter(User.is_active == False)
 
-        query = query.order_by(User.created_at.desc())
+        query, sort, direction = apply_sorting(
+            query,
+            {
+                'name': User.name,
+                'email': User.email,
+                'created_at': User.created_at,
+            },
+            default='created_at',
+            default_direction='desc',
+        )
         customers, total, total_pages = get_pagination(query, page, per_page=20)
 
         return render_template(
             'admin/customers.html',
             customers=customers, page=page, total=total, total_pages=total_pages,
-            search=search, is_active=is_active
+            search=search, is_active=is_active, sort=sort, direction=direction,
         )
 
 
