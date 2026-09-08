@@ -98,6 +98,8 @@ def generate_seed_data():
                 is_active=random.choices([True, False], weights=[90, 10])[0],
                 phone=f"010{random.randint(10000000, 99999999)}"
             )
+            if i == 1:
+                customer.is_active = True # Ensure at least customer1@example.com is active
             users.append(customer)
 
         db.add_all(users)
