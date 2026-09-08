@@ -1,102 +1,119 @@
 {% extends 'admin/base.html' %}
-
-{% block title %}Dashboard Overview{% endblock %}
-{% block header_title %}Dashboard Overview{% endblock %}
+{% from 'macros.html' import kpi_tile, status_badge, money, empty_state %}
+{% block title %}Dashboard · {{ company_name }} Admin{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block topbar_actions %}<a class="btn btn-primary btn-sm" href="{{ url_for('admin.add_product') }}">+ New product</a>{% endblock %}
 
 {% block content %}
-<div class="row g-4 mb-4">
-    <div class="col-md-3">
-        <div class="card h-100 bg-white">
-            <div class="card-body d-flex align-items-center">
-                <div class="bg-primary bg-opacity-10 p-3 rounded-3 text-primary me-3">
-                    <i class="bi bi-currency-dollar fs-3"></i>
-                </div>
-                <div>
-                    <h6 class="text-muted mb-1">Total Revenue</h6>
-                    <h3 class="mb-0 fw-bold">${{ "{:,.2f}".format(total_revenue) }}</h3>
-                </div>
-            </div>
-        </div>
+<div class="kpi-grid">
+  {{ kpi_tile('Total revenue', money(total_revenue), active_orders ~ ' active orders · AOV ' ~ money(aov)) }}
+  {{ kpi_tile('Orders', total_orders, active_orders ~ ' active') }}
+  {{ kpi_tile('Customers', total_customers, new_customers ~ ' new in the last 30 days') }}
+  {{ kpi_tile('Low stock items', low_stock_items, 'products with ≤ 5 units left') }}
+</div>
+
+<div class="dash-grid">
+  <div class="card">
+    <div class="card-head">
+      <h2>Revenue — last 7 days</h2>
+      <span class="muted small">{{ money(daily_total) }} total</span>
     </div>
-    <div class="col-md-3">
-        <div class="card h-100 bg-white">
-            <div class="card-body d-flex align-items-center">
-                <div class="bg-success bg-opacity-10 p-3 rounded-3 text-success me-3">
-                    <i class="bi bi-cart-check fs-3"></i>
-                </div>
-                <div>
-                    <h6 class="text-muted mb-1">Total Orders</h6>
-                    <h3 class="mb-0 fw-bold">{{ total_orders }}</h3>
-                </div>
-            </div>
+    <div class="card-body">
+      <div class="bar-chart">
+        {% for d in daily %}
+        <div class="bar-col {{ 'zero' if not d.revenue }}"
+             title="{{ d.date }} — {{ money(d.revenue) }} from {{ d.orders }} order(s)">
+          <div class="bar" style="--h: {{ d.pct }}%"></div>
+          <span class="bar-label">{{ d.label }}</span>
         </div>
+        {% endfor %}
+      </div>
     </div>
-    <div class="col-md-3">
-        <div class="card h-100 bg-white">
-            <div class="card-body d-flex align-items-center">
-                <div class="bg-info bg-opacity-10 p-3 rounded-3 text-info me-3">
-                    <i class="bi bi-people fs-3"></i>
-                </div>
-                <div>
-                    <h6 class="text-muted mb-1">Customers</h6>
-                    <h3 class="mb-0 fw-bold">{{ total_customers }}</h3>
-                </div>
-            </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Orders by status</h2></div>
+    <div class="card-body">
+      {% if status_segments %}
+      <div class="donut-wrap">
+        <div class="donut" style="background:conic-gradient({% for s in status_segments %}{{ s.color }} {{ s.start }}% {{ s.end }}%{{ ',' if not loop.last }}{% endfor %})">
+          <div class="donut-center"><strong>{{ total_orders }}</strong><span class="small muted">orders</span></div>
         </div>
+        <ul class="donut-legend">
+          {% for s in status_segments %}
+          <li><span class="swatch" style="background:{{ s.color }}"></span>
+              {{ s.status | capitalize }}<strong>{{ s.count }}</strong></li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% else %}
+      {{ empty_state('No orders yet', 'Orders will appear here as customers check out.') }}
+      {% endif %}
     </div>
-    <div class="col-md-3">
-        <div class="card h-100 bg-white border-bottom border-danger border-4">
-            <div class="card-body d-flex align-items-center">
-                <div class="bg-danger bg-opacity-10 p-3 rounded-3 text-danger me-3">
-                    <i class="bi bi-exclamation-triangle fs-3"></i>
-                </div>
-                <div>
-                    <h6 class="text-muted mb-1">Low Stock Items</h6>
-                    <h3 class="mb-0 fw-bold">{{ low_stock_items }}</h3>
-                </div>
-            </div>
+  </div>
+</div>
+
+<div class="dash-grid">
+  <div class="card">
+    <div class="card-head"><h2>Trending products</h2><span class="muted small">by units sold</span></div>
+    <div class="card-body">
+      {% if trending %}
+      {% for t in trending %}
+      <div class="trend-item">
+        <div class="trend-top">
+          <span><span class="trend-rank">{{ loop.index }}</span>
+            <a href="{{ url_for('admin.edit_product', product_id=t.id) }}">{{ t.name }}</a></span>
+          <strong>{{ t.units }} sold</strong>
         </div>
+        <div class="trend-bar"><span style="width: {{ t.pct }}%"></span></div>
+      </div>
+      {% endfor %}
+      {% else %}
+      {{ empty_state('No sales yet', 'Trends appear once orders start rolling in.') }}
+      {% endif %}
     </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Low stock</h2><a class="small" href="{{ url_for('admin.list_products') }}">Manage inventory →</a></div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Product</th><th class="num">Stock</th></tr></thead>
+        <tbody>
+          {% for p in low_stock %}
+          <tr>
+            <td><a href="{{ url_for('admin.edit_product', product_id=p.id) }}">{{ p.name }}</a></td>
+            <td class="num">{% if p.stock_quantity == 0 %}<span class="badge badge-cancelled">Out</span>
+              {% else %}<span class="badge badge-pending">{{ p.stock_quantity }}</span>{% endif %}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="2"><p class="muted small" style="padding:.75rem 0">All products are healthily stocked. 🎉</p></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
 <div class="card">
-    <div class="card-header bg-white py-3 border-0">
-        <h5 class="mb-0 fw-semibold">Recent Orders</h5>
-    </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="table-light text-muted small">
-                    <tr>
-                        <th class="ps-4">Order ID</th>
-                        <th>Customer</th>
-                        <th>Date</th>
-                        <th>Amount</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for order in recent_orders %}
-                    <tr>
-                        <td class="ps-4 fw-bold">#{{ order.id }}</td>
-                        <td>{{ order.customer.name }}</td>
-                        <td>{{ order.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                        <td>${{ "{:,.2f}".format(order.total_amount) }}</td>
-                        <td>
-                            {% set bg = 'warning' %}
-                            {% if order.status.value == 'delivered' %}{% set bg = 'success' %}
-                            {% elif order.status.value == 'shipped' %}{% set bg = 'primary' %}
-                            {% elif order.status.value == 'cancelled' %}{% set bg = 'danger' %}
-                            {% elif order.status.value == 'processing' %}{% set bg = 'info' %}{% endif %}
-                            <span class="badge bg-{{ bg }}">{{ order.status.value | title }}</span>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="5" class="text-center text-muted py-4">No recent orders found.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
+  <div class="card-head"><h2>Recent orders</h2><a class="small" href="{{ url_for('admin.list_orders') }}">View all →</a></div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Order</th><th>Customer</th><th>Placed</th><th>Status</th><th class="num">Total</th></tr></thead>
+      <tbody>
+        {% for o in recent_orders %}
+        <tr>
+          <td>#{{ o.id }}</td>
+          <td>{{ o.customer.name }}</td>
+          <td>{{ o.created_at.strftime('%b %d, %H:%M') }}</td>
+          <td>{{ status_badge(o.status) }}</td>
+          <td class="num">{{ money(o.total_amount) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5">{{ empty_state('No orders yet') }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}

@@ -1,0 +1,48 @@
+{% extends 'store/base.html' %}
+{% from 'macros.html' import money, csrf_field %}
+{% block title %}Checkout · {{ company_name }}{% endblock %}
+
+{% block content %}
+<div class="section-head">
+  <h1>Checkout</h1>
+  <a class="small" href="{{ url_for('store.view_cart') }}">← Back to cart</a>
+</div>
+
+<div class="cart-layout">
+  <div class="card">
+    <div class="card-head"><h2>Order review</h2></div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th colspan="2">Product</th><th class="num">Unit price</th><th class="num">Qty</th><th class="num">Line total</th></tr>
+        </thead>
+        <tbody>
+          {% for item in cart_items %}
+          <tr>
+            <td><img class="thumb" src="{{ item.product.image_url }}" alt=""></td>
+            <td>{{ item.product.name }}</td>
+            <td class="num">{{ money(item.product.price) }}</td>
+            <td class="num">{{ item.quantity }}</td>
+            <td class="num">{{ money(item.product.price * item.quantity) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <aside class="card card-body">
+    <h2>Payment</h2>
+    <p class="muted small">Demo checkout — no payment is processed. Placing the order reserves stock atomically and creates a real order you can track.</p>
+    <ul class="summary-list">
+      <li><span>Items ({{ cart_items | length }})</span><span>{{ money(total_amount) }}</span></li>
+      <li><span>Shipping</span><span class="muted">Free</span></li>
+    </ul>
+    <div class="summary-total"><span>Total</span><span>{{ money(total_amount) }}</span></div>
+    <form method="post" onsubmit="return confirm('Place this order?');">
+      {{ csrf_field() }}
+      <button class="btn btn-primary btn-block" type="submit">Place order</button>
+    </form>
+  </aside>
+</div>
+{% endblock %}

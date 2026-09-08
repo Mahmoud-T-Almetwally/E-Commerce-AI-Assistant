@@ -1,0 +1,36 @@
+{% extends 'store/base.html' %}
+{% from 'macros.html' import money, status_badge, empty_state %}
+{% block title %}My orders · {{ company_name }}{% endblock %}
+
+{% block content %}
+<div class="section-head"><h1>My orders</h1></div>
+
+{% if orders %}
+<div class="stack">
+  {% for o in orders %}
+  <div class="card">
+    <div class="card-head">
+      <h2>Order #{{ o.id }}</h2>
+      <div class="order-meta">
+        {{ status_badge(o.status) }}
+        <span class="muted small">{{ o.created_at.strftime('%b %d, %Y · %H:%M') }}</span>
+      </div>
+    </div>
+    <div class="card-body">
+      <p class="muted small">
+        {{ o.items | length }} item(s) —
+        {% for item in o.items[:3] %}{{ item.product.name }}{{ ', ' if not loop.last }}{% endfor %}
+        {% if o.items | length > 3 %}+ {{ o.items | length - 3 }} more{% endif %}
+      </p>
+      <div class="order-foot">
+        <strong class="product-price">{{ money(o.total_amount) }}</strong>
+        <a class="btn btn-sm" href="{{ url_for('store.order_detail', order_id=o.id) }}">View details</a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">{{ empty_state('No orders yet', 'Your placed orders will show up here.') }}</div>
+{% endif %}
+{% endblock %}

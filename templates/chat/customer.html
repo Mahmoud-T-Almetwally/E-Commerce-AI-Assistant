@@ -1,0 +1,46 @@
+{% extends 'store/base.html' %}
+{% from 'macros.html' import csrf_field %}
+{% block title %}AI Assistant · {{ company_name }}{% endblock %}
+{% block extra_css %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">{% endblock %}
+
+{% block content %}
+<div class="section-head">
+  <h1>AI Assistant</h1>
+  <span class="muted small">answers grounded in our knowledge base &amp; live catalog</span>
+</div>
+
+{# TODO(agent): wire this panel to the LangGraph endpoint.
+   Plan: POST to a JSON endpoint with {message, thread_id}; render replies as
+   .msg-user / .msg-bot bubbles in #chat-log; thread persists via the
+   Conversation model (LangGraph checkpointer). #}
+
+<div class="chat-panel">
+  <div class="chat-head">
+    <span class="chat-dot"></span>
+    <div>
+      <strong>{{ company_name }} Assistant</strong>
+      <div class="small muted">Online · remembers this conversation</div>
+    </div>
+  </div>
+
+  <div class="chat-log" id="chat-log">
+    <div class="msg msg-bot">
+      Hi {{ session.get('name', 'there') }} 👋 I can recommend products, check live stock,
+      and answer questions about shipping, returns and warranty.
+      <div class="msg-meta">just now</div>
+    </div>
+  </div>
+
+  <div class="suggest">
+    <button type="button" class="tag" data-suggest="What's your return policy?">Return policy</button>
+    <button type="button" class="tag" data-suggest="Recommend a laptop under $800">Recommend a laptop</button>
+    <button type="button" class="tag" data-suggest="Where is my order?">Order status</button>
+  </div>
+
+  <form class="composer" method="post" action="{{ url_for('chat.customer_chat') }}">
+    {{ csrf_field() }}
+    <input type="text" id="chat-input" name="message" placeholder="Ask anything…" autocomplete="off" required>
+    <button class="btn btn-primary" type="submit">Send</button>
+  </form>
+</div>
+{% endblock %}

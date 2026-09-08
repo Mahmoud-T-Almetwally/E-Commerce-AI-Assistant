@@ -1,0 +1,43 @@
+{% extends 'store/base.html' %}
+{% from 'macros.html' import money, product_card, csrf_field %}
+{% block title %}{{ product.name }} · {{ company_name }}{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Breadcrumb">
+  <a href="{{ url_for('store.list_products') }}">Shop</a> /
+  <a href="{{ url_for('store.list_products', category=product.category) }}">{{ product.category }}</a> /
+  <span>{{ product.name }}</span>
+</nav>
+
+<div class="detail-grid">
+  <div class="detail-media"><img src="{{ product.image_url }}" alt="{{ product.name }}"></div>
+  <div>
+    <span class="product-category">{{ product.category }}</span>
+    <h1>{{ product.name }}</h1>
+    <div class="product-tags">{% for t in product.tags %}<span class="tag">{{ t.name }}</span>{% endfor %}</div>
+    <p class="detail-price">{{ money(product.price) }}</p>
+    <p class="muted">{{ product.description }}</p>
+
+    {% if product.stock_quantity > 0 %}
+    <form class="qty-row" method="post" action="{{ url_for('store.add_to_cart') }}">
+      {{ csrf_field() }}
+      <input type="hidden" name="product_id" value="{{ product.id }}">
+      <input type="number" name="quantity" min="1" max="{{ product.stock_quantity }}" value="1" aria-label="Quantity">
+      <button class="btn btn-primary" type="submit">Add to cart</button>
+      {% if product.stock_quantity <= 5 %}
+        <span class="badge badge-pending">Only {{ product.stock_quantity }} left in stock</span>
+      {% endif %}
+    </form>
+    {% else %}
+    <p><span class="badge badge-cancelled">Out of stock</span></p>
+    {% endif %}
+  </div>
+</div>
+
+{% if related %}
+<section>
+  <div class="section-head"><h2>More in {{ product.category }}</h2></div>
+  <div class="product-grid">{% for r in related %}{{ product_card(r) }}{% endfor %}</div>
+</section>
+{% endif %}
+{% endblock %}

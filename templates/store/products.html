@@ -1,0 +1,84 @@
+{% extends 'store/base.html' %}
+{% from 'macros.html' import product_card, pagination, empty_state, money %}
+{% block title %}Shop · {{ company_name }}{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div>
+    <h1>Tech that works as hard as you do</h1>
+    <p>Browse the catalog, or ask our AI assistant anything about products, shipping and returns.</p>
+  </div>
+  {% if session.get('user_id') %}
+    <a class="btn" href="{{ url_for('chat.customer_chat') }}">💬 Ask the assistant</a>
+  {% else %}
+    <a class="btn" href="{{ url_for('auth.register') }}">Create an account</a>
+  {% endif %}
+</section>
+
+{% if trending and page == 1 and not search and not category and not tag and not min_price and not max_price %}
+<section aria-label="Trending products">
+  <div class="section-head">
+    <h2>🔥 Trending now</h2>
+    <span class="muted small">best sellers by units sold</span>
+  </div>
+  <div class="trending-rail">
+    {% for t in trending %}
+    <a class="trend-card" href="{{ url_for('store.product_detail', product_id=t.id) }}">
+      <span class="flame">🔥</span>
+      <span class="product-category">{{ t.category }}</span>
+      <h3 class="trend-name">{{ t.name }}</h3>
+      <div class="trend-meta">
+        <span class="product-price">{{ money(t.price) }}</span>
+        <span class="muted small">{{ t.units }} sold</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<form class="filter-bar" method="get" action="{{ url_for('store.list_products') }}">
+  <div class="field">
+    <label for="f-search">Search</label>
+    <input id="f-search" type="text" name="search" value="{{ search }}" placeholder="Name or description…">
+  </div>
+  <div class="field">
+    <label for="f-category">Category</label>
+    <input id="f-category" type="text" name="category" value="{{ category }}">
+  </div>
+  <div class="field">
+    <label for="f-tag">Tag</label>
+    <input id="f-tag" type="text" name="tag" value="{{ tag }}">
+  </div>
+  <div class="field">
+    <label for="f-min">Min price</label>
+    <input id="f-min" type="text" name="min_price" value="{{ min_price }}" inputmode="decimal">
+  </div>
+  <div class="field">
+    <label for="f-max">Max price</label>
+    <input id="f-max" type="text" name="max_price" value="{{ max_price }}" inputmode="decimal">
+  </div>
+  <div class="field">
+    <label for="f-sort">Sort by</label>
+    <select id="f-sort" name="sort" data-autosubmit>
+      <option value="newest"     {{ 'selected' if sort == 'newest' }}>Newest</option>
+      <option value="price_asc"  {{ 'selected' if sort == 'price_asc' }}>Price: low → high</option>
+      <option value="price_desc" {{ 'selected' if sort == 'price_desc' }}>Price: high → low</option>
+      <option value="name"       {{ 'selected' if sort == 'name' }}>Name A–Z</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>&nbsp;</label>
+    <button class="btn btn-primary" type="submit">Apply</button>
+  </div>
+</form>
+
+{% if products %}
+<div class="product-grid">
+  {% for p in products %}{{ product_card(p) }}{% endfor %}
+</div>
+{{ pagination(page, total, total_pages, 'products') }}
+{% else %}
+<div class="card">{{ empty_state('No products match your filters', 'Try a different search, or clear the filters above.') }}</div>
+{% endif %}
+{% endblock %}

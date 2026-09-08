@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import flashes, csrf_field %}
+
+{% block title %}Create account · {{ company_name }}{% endblock %}
+{% block body_class %}auth-page{% endblock %}
+
+{% block layout %}
+<main class="auth-wrap">
+  <section class="auth-brand">
+    <div>
+      <div class="brand-row">
+        <span class="logo logo-lg">{{ company_name[:1] }}</span>
+        <span class="auth-brand-name">{{ company_name }}</span>
+      </div>
+      <p class="auth-tagline">Join to track orders, keep your cart, and chat with our AI shopping assistant.</p>
+    </div>
+    <ul class="auth-points">
+      <li>One account for shop &amp; assistant</li>
+      <li>Full order history and status tracking</li>
+      <li>Personalised recommendations</li>
+    </ul>
+  </section>
+
+  <section class="auth-form">
+    {{ flashes() }}
+    <h1>Create your account</h1>
+    <p class="muted">Customer accounts only — admins are created from the admin panel.</p>
+
+    <form method="post" novalidate>
+      {{ csrf_field() }}
+      <div class="field">
+        <label for="name">Full name</label>
+        <input type="text" id="name" name="name" value="{{ name or '' }}" required autofocus>
+      </div>
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" value="{{ email or '' }}" required>
+      </div>
+      <div class="field">
+        <label for="phone">Phone <span class="muted small">(optional — 9 or 11 digits)</span></label>
+        <input type="text" id="phone" name="phone" value="{{ phone or '' }}">
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" minlength="6" required>
+        </div>
+        <div class="field">
+          <label for="confirm_password">Confirm password</label>
+          <input type="password" id="confirm_password" name="confirm_password" required>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Create account</button>
+    </form>
+
+    <p class="auth-alt">Already registered? <a href="{{ url_for('auth.login') }}">Sign in instead</a></p>
+  </section>
+</main>
+{% endblock %}

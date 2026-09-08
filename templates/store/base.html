@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import flashes %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/store.css') }}">{% endblock %}
+{% block body_class %}store-shell{% endblock %}
+
+{% block layout %}
+<header class="site-header">
+  <div class="header-inner">
+    <a class="brand" href="{{ url_for('store.index') }}">
+      <span class="logo">{{ company_name[:1] }}</span>{{ company_name }}
+    </a>
+
+    <form class="nav-search" method="get" action="{{ url_for('store.list_products') }}" role="search">
+      <input type="text" name="search" placeholder="Search products…" aria-label="Search products">
+      <button class="btn btn-primary" type="submit">Search</button>
+    </form>
+
+    <nav class="nav-links" aria-label="Main navigation">
+      <a href="{{ url_for('store.list_products') }}">Shop</a>
+      {% if session.get('user_id') %}
+        <a href="{{ url_for('store.list_orders') }}">Orders</a>
+        <a href="{{ url_for('chat.customer_chat') }}">AI Assistant</a>
+        <a class="cart-link" href="{{ url_for('store.view_cart') }}">Cart{% if cart_count %}<span class="cart-count">{{ cart_count }}</span>{% endif %}</a>
+        <span class="nav-user">Hi, {{ session.get('name') }}</span>
+        <a href="{{ url_for('auth.logout') }}">Log out</a>
+      {% else %}
+        <a class="cart-link" href="{{ url_for('store.view_cart') }}">Cart</a>
+        <a href="{{ url_for('auth.login') }}">Log in</a>
+        <a class="btn btn-primary btn-sm" href="{{ url_for('auth.register') }}">Sign up</a>
+      {% endif %}
+    </nav>
+  </div>
+</header>
+
+<main class="store-main">
+  {{ flashes() }}
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="site-footer">
+  <div>© {{ current_year }} {{ company_name }} · demo storefront</div>
+</footer>
+{% endblock %}

@@ -1,0 +1,95 @@
+{# ============ Shared building blocks ============ #}
+
+{% macro csrf_field() -%}
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{%- endmacro %}
+
+{% macro money(value) -%}${{ '{:,.2f}'.format(value | float) }}{%- endmacro %}
+
+{% macro status_badge(status) -%}
+{% set s = status.value if status is not string else status %}
+<span class="badge badge-{{ s }}">{{ s | capitalize }}</span>
+{%- endmacro %}
+
+{% macro flashes() -%}
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="flash-stack" aria-live="polite">
+    {% for category, message in messages %}
+    <div class="flash flash-{{ category }}">
+      <span>{{ message }}</span>
+      <button type="button" class="flash-close" aria-label="Dismiss">&times;</button>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endwith %}
+{%- endmacro %}
+
+{% macro empty_state(title, hint='') -%}
+<div class="empty-state">
+  <h3>{{ title }}</h3>
+  {% if hint %}<p>{{ hint }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro kpi_tile(label, value, sub='') -%}
+<div class="kpi">
+  <div class="kpi-label">{{ label }}</div>
+  <div class="kpi-value">{{ value }}</div>
+  {% if sub %}<div class="kpi-sub">{{ sub }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro pagination(page, total, total_pages, label='results') -%}
+{% if total %}
+<nav class="pagination" aria-label="Pagination">
+  <span class="page-info">{{ total }} {{ label }}{% if total_pages > 1 %} &middot; page {{ page }} of {{ total_pages }}{% endif %}</span>
+  {% if total_pages > 1 %}
+  <div class="page-links">
+    {% set base = dict(request.args) %}
+    <a class="page-btn {{ 'disabled' if page <= 1 }}" href="{{ url_for(request.endpoint, **dict(base, page=1)) }}">&laquo;</a>
+    <a class="page-btn {{ 'disabled' if page <= 1 }}" href="{{ url_for(request.endpoint, **dict(base, page=page-1)) }}">Prev</a>
+    {% for p in range([1, page - 2] | max, [total_pages + 1, page + 3] | min) %}
+      <a class="page-btn {{ 'current' if p == page }}" href="{{ url_for(request.endpoint, **dict(base, page=p)) }}">{{ p }}</a>
+    {% endfor %}
+    <a class="page-btn {{ 'disabled' if page >= total_pages }}" href="{{ url_for(request.endpoint, **dict(base, page=page+1)) }}">Next</a>
+    <a class="page-btn {{ 'disabled' if page >= total_pages }}" href="{{ url_for(request.endpoint, **dict(base, page=total_pages)) }}">&raquo;</a>
+  </div>
+  {% endif %}
+</nav>
+{% endif %}
+{%- endmacro %}
+
+{% macro sort_link(label, field, sort, direction) -%}
+{% set new_dir = 'desc' if (sort == field and direction == 'asc') else 'asc' %}
+<a class="th-sort" href="{{ url_for(request.endpoint, **dict(request.args, sort=field, direction=new_dir, page=1)) }}">
+  {{ label }}{% if sort == field %} <span class="sort-arrow">{{ '↑' if direction == 'asc' else '↓' }}</span>{% endif %}
+</a>
+{%- endmacro %}
+
+{% macro product_card(product) -%}
+<article class="product-card">
+  <a class="product-media" href="{{ url_for('store.product_detail', product_id=product.id) }}">
+    <img src="{{ product.image_url }}" alt="{{ product.name }}" loading="lazy">
+    {% if product.stock_quantity == 0 %}<span class="stock-flag">Out of stock</span>
+    {% elif product.stock_quantity <= 5 %}<span class="stock-flag low">Only {{ product.stock_quantity }} left</span>{% endif %}
+  </a>
+  <div class="product-body">
+    <span class="product-category">{{ product.category }}</span>
+    <h3 class="product-name"><a href="{{ url_for('store.product_detail', product_id=product.id) }}">{{ product.name }}</a></h3>
+    <div class="product-tags">{% for t in product.tags[:3] %}<span class="tag">{{ t.name }}</span>{% endfor %}</div>
+    <div class="product-footer">
+      <span class="product-price">{{ money(product.price) }}</span>
+      {% if product.stock_quantity > 0 %}
+      <form method="post" action="{{ url_for('store.add_to_cart') }}">
+        {{ csrf_field() }}
+        <input type="hidden" name="product_id" value="{{ product.id }}">
+        <input type="hidden" name="quantity" value="1">
+        <button type="submit" class="btn btn-primary btn-sm">Add to cart</button>
+      </form>
+      {% else %}<span class="btn btn-sm" aria-disabled="true">Unavailable</span>{% endif %}
+    </div>
+  </div>
+</article>
+{%- endmacro %}

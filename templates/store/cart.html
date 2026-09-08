@@ -1,0 +1,64 @@
+{% extends 'store/base.html' %}
+{% from 'macros.html' import money, csrf_field, empty_state %}
+{% block title %}Cart · {{ company_name }}{% endblock %}
+
+{% block content %}
+<div class="section-head">
+  <h1>Your cart</h1>
+  <a class="small" href="{{ url_for('store.list_products') }}">← Continue shopping</a>
+</div>
+
+{% if cart_items %}
+<div class="cart-layout">
+  <div class="card">
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th colspan="2">Product</th><th class="num">Price</th><th>Quantity</th><th class="num">Line total</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for item in cart_items %}
+          <tr>
+            <td><img class="thumb" src="{{ item.product.image_url }}" alt=""></td>
+            <td>
+              <a href="{{ url_for('store.product_detail', product_id=item.product_id) }}">{{ item.product.name }}</a>
+              <div class="small muted">{{ item.product.category }}</div>
+            </td>
+            <td class="num">{{ money(item.product.price) }}</td>
+            <td>
+              <form class="qty-edit" method="post" action="{{ url_for('store.update_cart') }}">
+                {{ csrf_field() }}
+                <input type="hidden" name="cart_item_id" value="{{ item.id }}">
+                <input type="number" name="quantity" min="1" max="{{ item.product.stock_quantity }}" value="{{ item.quantity }}" aria-label="Quantity">
+                <button class="btn btn-sm" type="submit">Update</button>
+              </form>
+            </td>
+            <td class="num">{{ money(item.product.price * item.quantity) }}</td>
+            <td class="right">
+              <form method="post" action="{{ url_for('store.remove_from_cart', item_id=item.id) }}"
+                    onsubmit="return confirm('Remove this item from your cart?');">
+                {{ csrf_field() }}
+                <button class="btn btn-sm btn-danger" type="submit">Remove</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <aside class="card card-body">
+    <h2>Summary</h2>
+    <ul class="summary-list">
+      <li><span>Subtotal</span><strong>{{ money(total_amount) }}</strong></li>
+      <li><span class="muted">Shipping</span><span class="muted">Free</span></li>
+    </ul>
+    <div class="summary-total"><span>Total</span><span>{{ money(total_amount) }}</span></div>
+    <a class="btn btn-primary btn-block" href="{{ url_for('store.checkout') }}">Proceed to checkout</a>
+  </aside>
+</div>
+{% else %}
+<div class="card">{{ empty_state('Your cart is empty', 'Browse the shop and add something you like.') }}</div>
+{% endif %}
+{% endblock %}

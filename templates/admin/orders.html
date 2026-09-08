@@ -1,65 +1,74 @@
 {% extends 'admin/base.html' %}
-
-{% block title %}Manage Orders{% endblock %}
-{% block header_title %}Orders{% endblock %}
+{% from 'macros.html' import csrf_field, money, pagination, sort_link, empty_state, status_badge %}
+{% block title %}Orders · {{ company_name }} Admin{% endblock %}
+{% block page_title %}Orders{% endblock %}
 
 {% block content %}
-<div class="card">
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="table-light text-muted small">
-                    <tr>
-                        <th class="ps-4">ID</th>
-                        <th>Customer</th>
-                        <th>Date Ordered</th>
-                        <th>Total Amount</th>
-                        <th>Status & Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for order in orders %}
-                    <tr>
-                        <td class="ps-4 fw-bold">#{{ order.id }}</td>
-                        <td>
-                            <div class="fw-semibold">{{ order.customer.name }}</div>
-                            <div class="text-muted small">{{ order.customer.email }}</div>
-                        </td>
-                        <td>{{ order.created_at.strftime('%b %d, %Y - %H:%M') }}</td>
-                        <td>${{ "{:,.2f}".format(order.total_amount) }}</td>
-                        <td>
-                            <form action="{{ url_for('admin.update_order_status', order_id=order.id) }}" method="POST" class="d-flex gap-2 align-items-center">
-                                <select name="status" class="form-select form-select-sm" style="width: auto;">
-                                    {% for status in statuses %}
-                                        <option value="{{ status }}" {% if order.status.value == status %}selected{% endif %}>
-                                            {{ status | title }}
-                                        </option>
-                                    {% endfor %}
-                                </select>
-                                <button type="submit" class="btn btn-sm btn-light border">Update</button>
-                            </form>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="5" class="text-center text-muted py-5">No orders found.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
+<form class="filter-bar" method="get" action="{{ url_for('admin.list_orders') }}">
+  <div class="field"><label for="f-status">Status</label>
+    <select id="f-status" name="status">
+      <option value="">All statuses</option>
+      {% for s in statuses %}
+      <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s | capitalize }}</option>
+      {% endfor %}
+    </select></div>
+  <div class="field"><label for="f-customer">Customer</label>
+    <input id="f-customer" type="text" name="customer" value="{{ customer_search }}" placeholder="Name or email…"></div>
+  <div class="field"><label for="f-start">From</label>
+    <input id="f-start" type="date" name="start_date" value="{{ start_date }}"></div>
+  <div class="field"><label for="f-end">To</label>
+    <input id="f-end" type="date" name="end_date" value="{{ end_date }}"></div>
+  <div class="field"><label>&nbsp;</label><button class="btn btn-primary" type="submit">Apply</button></div>
+</form>
 
-    {% if total_pages > 1 %}
-    <div class="card-footer bg-white py-3">
-        <ul class="pagination pagination-sm justify-content-end mb-0 pe-2">
-            <li class="page-item {% if page == 1 %}disabled{% endif %}">
-                <a class="page-link" href="{{ url_for('admin.list_orders', page=page-1) }}">Prev</a>
-            </li>
-            <li class="page-item disabled"><span class="page-link">Page {{ page }} of {{ total_pages }}</span></li>
-            <li class="page-item {% if page == total_pages %}disabled{% endif %}">
-                <a class="page-link" href="{{ url_for('admin.list_orders', page=page+1) }}">Next</a>
-            </li>
-        </ul>
-    </div>
-    {% endif %}
+{% if orders %}
+<div class="card">
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Order</th>
+          <th>{{ sort_link('Placed', 'created_at', sort, direction) }}</th>
+          <th>Customer</th>
+          <th class="num">Items</th>
+          <th>{{ sort_link('Status', 'status', sort, direction) }}</th>
+          <th class="num">{{ sort_link('Total', 'total_amount', sort, direction) }}</th>
+          <th>Update status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for o in orders %}
+        <tr>
+          <td><strong>#{{ o.id }}</strong></td>
+          <td class="nowrap">{{ o.created_at.strftime('%b %d, %Y · %H:%M') }}</td>
+          <td>
+            <div class="cell-product">
+              <span class="avatar">{{ o.customer.name[:1] }}</span>
+              <div><strong>{{ o.customer.name }}</strong><div class="small muted">{{ o.customer.email }}</div></div>
+            </div>
+          </td>
+          <td class="num">{{ o.items | length }}</td>
+          <td>{{ status_badge(o.status) }}</td>
+          <td class="num">{{ money(o.total_amount) }}</td>
+          <td>
+            <form class="status-form" method="post" action="{{ url_for('admin.update_order_status', order_id=o.id) }}">
+              {{ csrf_field() }}
+              <select name="status" aria-label="New status">
+                {% for s in statuses %}
+                <option value="{{ s }}" {{ 'selected' if o.status.value == s }}>{{ s | capitalize }}</option>
+                {% endfor %}
+              </select>
+              <button class="btn btn-sm btn-primary" type="submit">Save</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
+{{ pagination(page, total, total_pages, 'orders') }}
+{% else %}
+<div class="card">{{ empty_state('No orders found', 'Try clearing the filters.') }}</div>
+{% endif %}
 {% endblock %}

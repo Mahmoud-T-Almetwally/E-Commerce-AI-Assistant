@@ -1,0 +1,78 @@
+{% extends 'admin/base.html' %}
+{% from 'macros.html' import csrf_field %}
+{% block title %}AI Assistant · {{ company_name }} Admin{% endblock %}
+{% block page_title %}AI Assistant{% endblock %}
+{% block extra_css %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">{% endblock %}
+
+{% block content %}
+<div class="chat-admin-layout">
+  <div class="chat-panel">
+    <div class="chat-head">
+      <span class="chat-dot"></span>
+      <div>
+        <strong>Assistant playground</strong>
+        <div class="small muted">test the agent with the current model configuration</div>
+      </div>
+    </div>
+
+    <div class="chat-log" id="chat-log">
+      <div class="msg msg-bot">
+        Admin playground — chat here to test retrieval quality and tone before
+        rolling changes out to customers.
+        <div class="msg-meta">just now</div>
+      </div>
+    </div>
+
+    <form class="composer" method="post" action="{{ url_for('chat.admin_chat') }}">
+      {{ csrf_field() }}
+      <input type="text" id="chat-input" name="message" placeholder="Ask a test question…" autocomplete="off" required>
+      <button class="btn btn-primary" type="submit">Send</button>
+    </form>
+  </div>
+
+  <div class="stack">
+    {# TODO(agent): settings POST persists overrides (config.yaml or DB) and
+       applies to the live agent. Currently a stub — see routes/chat.py. #}
+    <form class="card card-body" method="post" action="{{ url_for('chat.admin_chat') }}">
+      <h2>Model parameters</h2>
+      {{ csrf_field() }}
+      <div class="field">
+        <label for="m-provider">Provider</label>
+        <select id="m-provider" name="provider" disabled>
+          <option selected>{{ llm_config.provider }}</option>
+        </select>
+        <span class="hint">Runtime provider switching lands with the agent backend.</span>
+      </div>
+      <div class="field">
+        <label for="m-model">Model</label>
+        <input id="m-model" name="model_name" value="{{ llm_config.model_name }}">
+      </div>
+      <div class="field">
+        <label for="m-temp">Temperature — <output>{{ '%.1f' | format(llm_config.temperature) }}</output></label>
+        <input id="m-temp" type="range" name="temperature" min="0" max="1" step="0.1" value="{{ llm_config.temperature }}">
+      </div>
+      <div class="field">
+        <label for="m-tokens">Max tokens</label>
+        <input id="m-tokens" type="number" name="max_tokens" min="128" max="8192" step="128" value="{{ llm_config.max_tokens }}">
+      </div>
+      <button class="btn btn-primary" type="submit">Save settings</button>
+    </form>
+
+    <div class="card card-body">
+      <h2>Live configuration</h2>
+      <ul class="summary-list mono">
+        <li><span>LLM</span><span>{{ llm_config.provider }} / {{ llm_config.model_name }}</span></li>
+        <li><span>Embeddings</span><span>{{ embedding_config.provider }} / {{ embedding_config.model_name }}</span></li>
+        <li><span>RAG chunks</span><span>{{ rag_config.chunk_size }} chars · {{ rag_config.chunk_overlap }} overlap</span></li>
+      </ul>
+      <p class="muted small">Effective values loaded from config.yaml + environment. The playground uses these once the agent is wired.</p>
+    </div>
+
+    <div class="card card-body">
+      <h2>System prompt</h2>
+      <p class="small muted">{{ system_context.system_prompt_template.format(
+           company_name=system_context.company_name, tone=system_context.tone) }}</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

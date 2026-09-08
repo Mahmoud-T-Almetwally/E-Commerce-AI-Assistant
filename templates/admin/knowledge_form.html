@@ -1,72 +1,63 @@
 {% extends 'admin/base.html' %}
-
-{% block title %}{{ 'Edit' if doc else 'Add' }} Knowledge Document{% endblock %}
-{% block header_title %}{{ 'Edit Document' if doc else 'Add to Knowledge Base' }}{% endblock %}
+{% from 'macros.html' import csrf_field %}
+{% set is_edit = doc is not none %}
+{% set fd = form_data or doc %}
+{% block title %}{{ 'Edit' if is_edit else 'Add' }} document · {{ company_name }} Admin{% endblock %}
+{% block page_title %}{{ 'Edit document' if is_edit else 'Add knowledge document' }}{% endblock %}
+{% block topbar_actions %}<a class="btn btn-sm" href="{{ url_for('rag.list_knowledge') }}">← Back to knowledge base</a>{% endblock %}
 
 {% block content %}
-<!-- Variable setup to handle both normal loading and form-validation-error re-renders -->
-{% set current_title = (form_data.title if form_data else '') or (doc.title if doc else '') %}
-{% set current_content = (form_data.content if form_data else '') or (doc.content if doc else '') %}
-{% set current_type = (form_data.doc_type if form_data else '') or (doc.doc_type if doc else 'General') %}
+<form method="post"
+      action="{{ url_for('rag.edit_knowledge', doc_id=doc.id) if is_edit else url_for('rag.add_knowledge') }}"
+      {% if not is_edit %}enctype="multipart/form-data"{% endif %}
+      novalidate>
+  {{ csrf_field() }}
 
-<div class="row">
-    <div class="col-lg-8 mx-auto">
-        
-        <div class="card shadow-sm border-0">
-            <div class="card-body p-4">
-                
-                <!-- Notice the enctype: Required for file uploads -->
-                <form method="POST" enctype="multipart/form-data">
-                    
-                    <!-- Only show file upload field when adding a NEW document -->
-                    {% if not doc %}
-                    <div class="mb-4 bg-primary bg-opacity-10 border border-primary border-opacity-25 rounded p-4 text-center">
-                        <i class="bi bi-cloud-arrow-up text-primary fs-2 mb-2"></i>
-                        <h6 class="fw-semibold text-dark">Upload a File (Optional)</h6>
-                        <p class="text-muted small mb-3">Upload a .txt, .pdf, or .docx file. The system will automatically extract its text and save it.</p>
-                        
-                        <div class="mx-auto" style="max-width: 400px;">
-                            <input type="file" name="file" class="form-control" accept=".txt,.pdf,.docx">
-                        </div>
-                    </div>
-
-                    <div class="position-relative mb-4 text-center">
-                        <hr class="text-muted">
-                        <span class="position-absolute top-50 start-50 translate-middle bg-white px-3 text-muted small fw-bold">OR ENTER MANUALLY</span>
-                    </div>
-                    {% endif %}
-
-                    <div class="row mb-3">
-                        <div class="col-md-8">
-                            <label class="form-label fw-semibold">Document Title</label>
-                            <input type="text" name="title" class="form-control" value="{{ current_title }}" placeholder="e.g. Return Policy 2026">
-                            <div class="form-text">Leave blank if uploading a file to use the file's name.</div>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Document Type</label>
-                            <input type="text" name="doc_type" class="form-control" value="{{ current_type }}" placeholder="e.g. FAQ, Policy">
-                        </div>
-                    </div>
-
-                    <div class="mb-4">
-                        <label class="form-label fw-semibold">Content</label>
-                        <textarea name="content" class="form-control font-monospace" rows="10" placeholder="Type or paste the knowledge text here...">{{ current_content }}</textarea>
-                        <div class="form-text">This text will be split into chunks and embedded into the Vector Database for the AI to search.</div>
-                    </div>
-
-                    <hr class="text-muted mt-4 mb-3">
-
-                    <div class="d-flex justify-content-end gap-2">
-                        <a href="{{ url_for('rag.list_knowledge') }}" class="btn btn-light border shadow-sm">Cancel</a>
-                        <button type="submit" class="btn btn-primary px-4 shadow-sm">
-                            <i class="bi bi-check2-circle"></i> {{ 'Save Changes' if doc else 'Add Document' }}
-                        </button>
-                    </div>
-                </form>
-
-            </div>
-        </div>
-        
+  <div class="form-columns">
+    <div class="card card-body">
+      <h2>Content</h2>
+      <div class="field">
+        <label for="title">Title</label>
+        <input id="title" name="title" value="{{ fd.title if fd else '' }}" required
+               placeholder="e.g. Return &amp; Refund Policy">
+      </div>
+      <div class="field">
+        <label for="content">Content</label>
+        <textarea id="content" name="content" rows="12" required
+                  placeholder="The text the AI assistant will retrieve and quote…">{{ fd.content if fd else '' }}</textarea>
+        <span class="hint">Chunked, embedded and indexed into the vector store on save.</span>
+      </div>
     </div>
-</div>
+
+    <div class="stack">
+      <div class="card card-body">
+        <h2>Metadata</h2>
+        <div class="field">
+          <label for="doc_type">Document type</label>
+          <input id="doc_type" name="doc_type" list="doc-types" value="{{ fd.doc_type if fd else 'General' }}">
+          <datalist id="doc-types">
+            <option value="General"><option value="FAQ"><option value="Policy"><option value="Product Guide">
+          </datalist>
+        </div>
+      </div>
+
+      {% if not is_edit %}
+      <div class="card card-body">
+        <h2>…or upload a file</h2>
+        <div class="field">
+          <label for="file">File</label>
+          <input id="file" type="file" name="file" accept=".txt,.pdf,.docx">
+          <span class="hint">.txt, .pdf or .docx · max 10 MB · text is extracted automatically.
+            If the title is blank, the filename is used.</span>
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">{{ 'Save changes' if is_edit else 'Add document' }}</button>
+        <a class="btn" href="{{ url_for('rag.list_knowledge') }}">Cancel</a>
+      </div>
+    </div>
+  </div>
+</form>
 {% endblock %}

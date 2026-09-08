@@ -1,0 +1,59 @@
+{% extends 'store/base.html' %}
+{% from 'macros.html' import money, status_badge %}
+{% block title %}Order #{{ order.id }} · {{ company_name }}{% endblock %}
+
+{% block content %}
+<div class="section-head">
+  <h1>Order #{{ order.id }}</h1>
+  <div class="order-meta">
+    {{ status_badge(order.status) }}
+    <span class="muted small">Placed {{ order.created_at.strftime('%b %d, %Y · %H:%M') }}</span>
+  </div>
+</div>
+
+{% if order.status.value == 'cancelled' %}
+<div class="order-banner-cancelled">This order was cancelled. Reserved stock has been returned to inventory.</div>
+{% else %}
+{% set flow = ['pending', 'processing', 'shipped', 'delivered'] %}
+{% set idx = flow.index(order.status.value) %}
+<div class="steps">
+  {% for s in flow %}
+  <div class="step {{ 'done' if loop.index0 < idx }} {{ 'current' if loop.index0 == idx }}">{{ s | capitalize }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="cart-layout">
+  <div class="card">
+    <div class="card-head"><h2>Items</h2></div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th colspan="2">Product</th><th class="num">Unit price</th><th class="num">Qty</th><th class="num">Line total</th></tr>
+        </thead>
+        <tbody>
+          {% for item in order.items %}
+          <tr>
+            <td><img class="thumb" src="{{ item.product.image_url }}" alt=""></td>
+            <td><a href="{{ url_for('store.product_detail', product_id=item.product_id) }}">{{ item.product.name }}</a></td>
+            <td class="num">{{ money(item.unit_price) }}</td>
+            <td class="num">{{ item.quantity }}</td>
+            <td class="num">{{ money(item.unit_price * item.quantity) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <aside class="card card-body">
+    <h2>Summary</h2>
+    <ul class="summary-list">
+      <li><span>Items</span><span>{{ order.items | length }}</span></li>
+      <li><span>Shipping</span><span class="muted">Free</span></li>
+    </ul>
+    <div class="summary-total"><span>Total</span><span>{{ money(order.total_amount) }}</span></div>
+    <a class="btn btn-block" href="{{ url_for('store.list_orders') }}">← All my orders</a>
+  </aside>
+</div>
+{% endblock %}
