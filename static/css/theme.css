@@ -74,6 +74,31 @@ textarea { resize:vertical; min-height:120px; }
 .form-actions { display:flex; gap:.75rem; margin-top:1rem; }
 @media (max-width:640px){ .form-row{ grid-template-columns:1fr; } }
 
+/* ---------- token picker (tags / categories) ---------- */
+.token-field { display:flex; flex-wrap:wrap; gap:.35rem; align-items:center; position:relative;
+               border:1px solid var(--border); border-radius:var(--radius); background:var(--surface);
+               padding:.3rem .5rem; cursor:text; }
+.token-field:focus-within { border-color:var(--brand-500); box-shadow:0 0 0 3px var(--brand-100); }
+.token-pills { display:contents; }
+.token-pill { display:inline-flex; align-items:center; gap:.35rem; background:var(--brand-100);
+              color:var(--brand-700); border-radius:999px; padding:.14rem .2rem .14rem .65rem;
+              font-size:.78rem; font-weight:600; }
+.token-x { border:none; background:var(--brand-200); color:var(--brand-700); width:17px; height:17px;
+           border-radius:50%; cursor:pointer; font-size:.72rem; line-height:1; padding:0;
+           display:inline-flex; align-items:center; justify-content:center; }
+.token-x:hover { background:var(--danger); color:#fff; }
+.token-field .token-input { border:none; box-shadow:none; background:transparent;
+                            padding:.25rem .15rem; flex:1 1 110px; min-width:100px; width:auto; font:inherit; }
+.token-field .token-input:focus { border:none; box-shadow:none; outline:none; }
+.token-menu { position:absolute; top:calc(100% + 5px); left:0; right:0; background:var(--surface);
+              border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow-md);
+              z-index:60; max-height:240px; overflow-y:auto; }
+.token-option { padding:.5rem .75rem; cursor:pointer; display:flex; justify-content:space-between;
+                align-items:center; gap:1rem; font-size:.88rem; }
+.token-option:hover, .token-option.active { background:var(--brand-50); }
+.token-count { color:var(--ink-400); font-size:.75rem; font-weight:700; }
+.token-empty { padding:.5rem .75rem; color:var(--ink-500); font-size:.85rem; }
+
 /* ---------- cards ---------- */
 .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); }
 .card-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:1rem 1.25rem; border-bottom:1px solid var(--border); flex-wrap:wrap; }
