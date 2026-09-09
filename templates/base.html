@@ -11,6 +11,7 @@
 <body class="{% block body_class %}{% endblock %}">
   {% block layout %}{% endblock %}
   <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/token-picker.js') }}" defer></script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>
