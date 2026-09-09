@@ -1,5 +1,8 @@
 {% extends 'admin/base.html' %}
 {% from 'macros.html' import csrf_field %}
+{% set fv = form_values or {} %}
+{% set cat_init = fv.get('category') or (product.category if product else '') %}
+{% set tags_init = fv.get('tags') or tags_str %}
 {% block title %}{{ 'Edit' if product else 'Add' }} product · {{ company_name }} Admin{% endblock %}
 {% block page_title %}{{ 'Edit product' if product else 'Add product' }}{% endblock %}
 {% block topbar_actions %}<a class="btn btn-sm" href="{{ url_for('admin.list_products') }}">← Back to products</a>{% endblock %}
@@ -12,23 +15,32 @@
       <h2>Details</h2>
       <div class="field">
         <label for="name">Name</label>
-        <input id="name" name="name" value="{{ product.name if product else '' }}" required>
+        <input id="name" name="name" type="text"
+               value="{{ fv.get('name') or (product.name if product else '') }}" required>
       </div>
       <div class="form-row">
         <div class="field">
-          <label for="category">Category</label>
-          <input id="category" name="category" value="{{ product.category if product else '' }}" required>
+          <label for="pf-category-input">Category</label>
+          <div class="token-field"
+               data-input-id="pf-category-input"
+               data-mode="single"
+               data-name="category"
+               data-lookup="categories"
+               data-placeholder="Search or type a new category…"
+               data-initial="{{ cat_init }}"></div>
+          <span class="hint">Pick an existing category or type a new one — you are not limited to the list.</span>
         </div>
         <div class="field">
           <label for="image_url">Image URL</label>
-          <input id="image_url" name="image_url" value="{{ product.image_url if product else '' }}"
+          <input id="image_url" name="image_url" type="text"
+                 value="{{ fv.get('image_url') or (product.image_url if product else '') }}"
                  placeholder="/static/images/default-product.png">
           <span class="hint">Leave blank for the default image.</span>
         </div>
       </div>
       <div class="field">
         <label for="description">Description</label>
-        <textarea id="description" name="description" rows="6">{{ product.description if product else '' }}</textarea>
+        <textarea id="description" name="description" rows="6">{{ fv.get('description') or (product.description if product else '') }}</textarea>
       </div>
     </div>
 
@@ -38,13 +50,14 @@
         <div class="form-row">
           <div class="field">
             <label for="price">Price ($)</label>
-            <input id="price" name="price" inputmode="decimal" placeholder="19.99"
-                   value="{{ '{:.2f}'.format(product.price | float) if product else '' }}">
+            <input id="price" name="price" type="text" inputmode="decimal" placeholder="19.99"
+                   value="{{ fv.get('price') or ('{:.2f}'.format(product.price | float) if product else '') }}">
+            <span class="hint">Validated server-side as a number with up to 2 decimals.</span>
           </div>
           <div class="field">
             <label for="stock_quantity">Stock quantity</label>
             <input id="stock_quantity" name="stock_quantity" type="number" min="0"
-                   value="{{ product.stock_quantity if product else 0 }}">
+                   value="{{ fv.get('stock_quantity') or (product.stock_quantity if product else 0) }}">
           </div>
         </div>
       </div>
@@ -52,9 +65,15 @@
       <div class="card card-body">
         <h2>Tags</h2>
         <div class="field">
-          <label for="tags">Tags</label>
-          <input id="tags" name="tags" value="{{ tags_str }}" placeholder="Wireless, Gaming, Sale">
-          <span class="hint">Comma-separated. New tags are created automatically; matching is case-insensitive.</span>
+          <label for="pf-tags-input">Tags</label>
+          <div class="token-field"
+               data-input-id="pf-tags-input"
+               data-mode="multiple"
+               data-name="tags"
+               data-lookup="tags"
+               data-placeholder="Search or type a new tag…"
+               data-initial="{{ tags_init }}"></div>
+          <span class="hint">Pick suggestions or type new ones — unknown tags are created automatically on save.</span>
         </div>
       </div>
 

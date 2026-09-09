@@ -150,7 +150,7 @@ def dashboard_home():
             .all()
         )
 
-        # --- Revenue, last 7 days (chart-ready) ---
+        # --- Revenue, last 7 days ---
         cutoff = datetime.now(timezone.utc) - timedelta(days=6)
         rows = (
             db.query(
@@ -261,8 +261,10 @@ def list_products():
             ))
         if category:
             query = query.filter(Product.category.ilike(f"%{escape_like(category)}%", escape="\\"))
-        if tag:
-            query = query.filter(Product.tags.any(Tag.name.ilike(f"%{escape_like(tag)}%", escape="\\")))
+
+        tag_filter = [t.strip().lower() for t in tag.split(',') if t.strip()]
+        if tag_filter:
+            query = query.filter(Product.tags.any(func.lower(Tag.name).in_(tag_filter)))
 
         try:
             if min_price:
@@ -324,7 +326,12 @@ def add_product():
                     logger.exception("Unexpected error while adding product %r", data.get('name'))
                     flash('An unexpected error occurred while adding the product. Please try again.', 'danger')
 
-    return render_template('admin/product_form.html', product=None, tags_str="")
+    return render_template(
+        'admin/product_form.html',
+        product=None,
+        tags_str="",
+        form_values=dict(request.form) if request.method == 'POST' else None,
+    )
 
 
 @admin_bp.route('/products/<int:product_id>/edit', methods=['GET', 'POST'])
@@ -365,7 +372,12 @@ def edit_product(product_id):
 
         existing_tags = ", ".join(tag.name for tag in product.tags) if product.tags else ""
 
-        return render_template('admin/product_form.html', product=product, tags_str=existing_tags)
+        return render_template(
+            'admin/product_form.html',
+            product=product,
+            tags_str=existing_tags,
+            form_values=dict(request.form) if request.method == 'POST' else None,
+        )
 
 
 @admin_bp.route('/products/<int:product_id>/delete', methods=['POST'])

@@ -60,8 +60,10 @@ def list_products():
             ))
         if category:
             query = query.filter(Product.category.ilike(f"%{escape_like(category)}%", escape="\\"))
-        if tag:
-            query = query.filter(Product.tags.any(Tag.name.ilike(f"%{escape_like(tag)}%", escape="\\")))
+
+        tag_filter = [t.strip().lower() for t in tag.split(',') if t.strip()]
+        if tag_filter:
+            query = query.filter(Product.tags.any(func.lower(Tag.name).in_(tag_filter)))
 
         try:
             if min_price:

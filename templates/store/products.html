@@ -43,12 +43,24 @@
     <input id="f-search" type="text" name="search" value="{{ search }}" placeholder="Name or description…">
   </div>
   <div class="field">
-    <label for="f-category">Category</label>
-    <input id="f-category" type="text" name="category" value="{{ category }}">
+    <label for="f-category-input">Category</label>
+    <div class="token-field"
+         data-input-id="f-category-input"
+         data-mode="single"
+         data-name="category"
+         data-lookup="categories"
+         data-placeholder="Any category…"
+         data-initial="{{ category }}"></div>
   </div>
   <div class="field">
-    <label for="f-tag">Tag</label>
-    <input id="f-tag" type="text" name="tag" value="{{ tag }}">
+    <label for="f-tag-input">Tags</label>
+    <div class="token-field"
+         data-input-id="f-tag-input"
+         data-mode="multiple"
+         data-name="tag"
+         data-lookup="tags"
+         data-placeholder="Any tag…"
+         data-initial="{{ tag }}"></div>
   </div>
   <div class="field">
     <label for="f-min">Min price</label>
