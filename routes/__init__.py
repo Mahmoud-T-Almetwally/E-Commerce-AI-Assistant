@@ -9,6 +9,7 @@ from .admin import admin_bp
 from .store import store_bp
 from .rag import rag_bp
 from .chat import chat_bp
+from .lookup import lookup_bp
 # from .webhook import webhook_bp
 
 def register_routes(app: Flask):
@@ -20,6 +21,7 @@ def register_routes(app: Flask):
     app.register_blueprint(rag_bp, url_prefix='/admin/knowledge')
     app.register_blueprint(store_bp)
     app.register_blueprint(chat_bp)
+    app.register_blueprint(lookup_bp)
 
     # enable via config
     # if config.meta_config.enabled:
