@@ -38,14 +38,17 @@
       {{ csrf_field() }}
       <div class="field">
         <label for="m-provider">Provider</label>
-        <select id="m-provider" name="provider" disabled>
-          <option selected>{{ llm_config.provider }}</option>
+        <select id="m-provider" name="provider">
+          {% for p in providers %}
+          <option value="{{ p }}" {{ 'selected' if llm_config.provider == p }}>{{ p | capitalize }}</option>
+          {% endfor %}
         </select>
-        <span class="hint">Runtime provider switching lands with the agent backend.</span>
+        <span class="hint">Only providers the system supports are listed. e.g. openai, anthropic, google.</span>
       </div>
       <div class="field">
-        <label for="m-model">Model</label>
-        <input id="m-model" name="model_name" value="{{ llm_config.model_name }}">
+        <label for="m-model">Model name</label>
+        <input id="m-model" name="model_name" type="text" value="{{ llm_config.model_name }}">
+        <span class="hint">Check Provider's catalog for full model name. e.g. gpt-4o-mini, llama-3.1-70b-versatile.</span>
       </div>
       <div class="field">
         <label for="m-temp">Temperature — <output>{{ '%.1f' | format(llm_config.temperature) }}</output></label>

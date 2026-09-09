@@ -1,7 +1,9 @@
+from typing import get_args
+
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from routes.auth import admin_required, login_required
-from utils.config import config
+from utils.config import LLMConfig, config
 
 chat_bp = Blueprint('chat', __name__)
 
@@ -24,10 +26,14 @@ def admin_chat():
     if request.method == 'POST':
         flash("Settings are display-only until the agent backend is live.", "info")
         return redirect(url_for('chat.admin_chat'))
+
+    providers = get_args(LLMConfig.model_fields['provider'].annotation)
+
     return render_template(
         'chat/admin.html',
         llm_config=config.llm_config,
         embedding_config=config.embedding_config,
         rag_config=config.rag_config,
         system_context=config.system_context,
+        providers=providers,
     )
