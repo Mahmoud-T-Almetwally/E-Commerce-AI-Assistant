@@ -63,7 +63,8 @@ img { max-width:100%; display:block; }
 .field label { font-weight:600; font-size:.88rem; color:var(--ink-900); }
 .field .hint { font-size:.78rem; color:var(--ink-500); }
 input[type=text],input[type=email],input[type=password],input[type=number],
-input[type=date],input[type=file],select,textarea {
+input[type=date],input[type=file],input[type=tel],input[type=url],
+input:not([type]),select,textarea {
   font:inherit; color:var(--ink-900); background:var(--surface);
   border:1px solid var(--border); border-radius:var(--radius);
   padding:.55rem .75rem; width:100%; transition:border-color .15s; }

@@ -18,7 +18,7 @@
       <h2>Content</h2>
       <div class="field">
         <label for="title">Title</label>
-        <input id="title" name="title" value="{{ fd.title if fd else '' }}" required
+        <input type="text" id="title" name="title" value="{{ fd.title if fd else '' }}" required
                placeholder="e.g. Return &amp; Refund Policy">
       </div>
       <div class="field">
@@ -34,7 +34,7 @@
         <h2>Metadata</h2>
         <div class="field">
           <label for="doc_type">Document type</label>
-          <input id="doc_type" name="doc_type" list="doc-types" value="{{ fd.doc_type if fd else 'General' }}">
+          <input type="text" id="doc_type" name="doc_type" list="doc-types" value="{{ fd.doc_type if fd else 'General' }}">
           <datalist id="doc-types">
             <option value="General"><option value="FAQ"><option value="Policy"><option value="Product Guide">
           </datalist>

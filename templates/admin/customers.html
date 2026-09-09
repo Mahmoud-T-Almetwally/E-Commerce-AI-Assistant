@@ -62,12 +62,12 @@
   <form method="post" action="{{ url_for('admin.create_admin') }}" novalidate>
     {{ csrf_field() }}
     <div class="form-row">
-      <div class="field"><label for="a-name">Name</label><input id="a-name" name="name" required></div>
+      <div class="field"><label for="a-name">Name</label><input type="text" id="a-name" name="name" required></div>
       <div class="field"><label for="a-email">Email</label><input id="a-email" type="email" name="email" required></div>
     </div>
     <div class="form-row">
       <div class="field"><label for="a-pass">Password</label><input id="a-pass" type="password" name="password" minlength="6" required></div>
-      <div class="field"><label for="a-phone">Phone <span class="muted small">(optional)</span></label><input id="a-phone" name="phone"></div>
+      <div class="field"><label for="a-phone">Phone <span class="muted small">(optional)</span></label><input type="text" id="a-phone" name="phone"></div>
     </div>
     <button class="btn btn-primary" type="submit">Create admin</button>
   </form>
