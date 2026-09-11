@@ -1,6 +1,5 @@
 import logging
 import re
-from functools import wraps
 from urllib.parse import urlparse
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
@@ -8,41 +7,16 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from database.db_setup import SessionLocal
 from database.models import User, UserRole
+from utils.auth import admin_required, login_required  
 from utils.extensions import limiter
 
 auth_bp = Blueprint('auth', __name__)
 logger = logging.getLogger(__name__)
 
+__all__ = ["auth_bp", "login_required", "admin_required", "EMAIL_RE", "PHONE_RE"]
+
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 PHONE_RE = re.compile(r"\d{9}|\d{11}")
-
-
-def login_required(f):
-    """
-    Decorator to ensure a user is logged in.
-    Use this on routes that require authentication but not necessarily admin privileges.
-    """
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not session.get('user_id'):
-            flash('Please log in to access this page.', 'warning')
-            return redirect(url_for('auth.login', next=request.url))
-        return f(*args, **kwargs)
-    return decorated_function
-
-
-def admin_required(f):
-    """
-    Decorator to ensure a user is logged in and has the ADMIN role.
-    Use this on any route that requires administrative privileges.
-    """
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not session.get('user_id') or session.get('role') != UserRole.ADMIN.value:
-            flash('Please log in as an administrator to access this page.', 'warning')
-            return redirect(url_for('auth.login', next=request.url))
-        return f(*args, **kwargs)
-    return decorated_function
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
