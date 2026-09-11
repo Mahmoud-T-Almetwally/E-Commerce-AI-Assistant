@@ -81,6 +81,8 @@ class MetaConfig(BaseModel):
 class DatabaseConfig(BaseModel):
     url: str = Field(default_factory=lambda: os.environ.get("DATABASE_URL") or f"sqlite:///{(PROJECT_ROOT / 'instance' / 'ecommerce.db').as_posix()}")
     chroma_persist_directory: str = Field(default_factory=lambda: os.environ.get("CHROMA_DB_DIR", "./instance/chroma_db"))
+    checkpoint_path: str = Field(default_factory=lambda: os.environ.get(
+        "LANGGRAPH_CHECKPOINT_PATH", "./instance/checkpoints.sqlite"))
     echo_queries: bool = False
     connect_args: Dict[str, Any] = Field(default_factory=lambda: {"check_same_thread": False})
 
@@ -99,10 +101,29 @@ class LLMConfig(BaseModel):
     model_name: str = "gpt-4o-mini"
     temperature: float = 0.2
     max_tokens: int = 2048
+    top_p: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    seed: Optional[int] = None
+    max_retries: int = Field(default=3, ge=0, le=10)
+    timeout_seconds: float = Field(default=60.0, gt=0)
+    vision_capable: bool = Field(default=False)
     api_key: Optional[str] = None
 
     def get_api_key(self) -> Optional[str]:
         return _require_api_key(self.provider, self.api_key)
+
+
+class AgentRuntimeConfig(BaseModel):
+    """Tunables for the agent graph itself (see agent/graph.py, agent/tooling.py)."""
+    guard_enabled: bool = True
+    guard_include_context: bool = True
+    max_tool_retries: int = Field(default=2, ge=0, le=5)
+    tool_retry_backoff_seconds: float = Field(default=0.5, ge=0)
+    status_events_enabled: bool = True
+    sensitive_tool_names: List[str] = Field(default_factory=lambda: ["add_to_cart", "checkout"])
+    confirmation_timeout_seconds: int = Field(default=600, gt=0)
+    max_upload_mb: int = Field(default=5, gt=0)
+    allowed_upload_extensions: List[str] = Field(
+        default_factory=lambda: [".png", ".jpg", ".jpeg", ".webp", ".gif"])
 
 
 class SystemContext(BaseModel):
@@ -124,12 +145,12 @@ class AgentConfiguration(BaseModel):
     llm_config: LLMConfig = Field(default_factory=LLMConfig)
     embedding_config: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
     rag_config: RAGConfig = Field(default_factory=RAGConfig)
+    agent: AgentRuntimeConfig = Field(default_factory=AgentRuntimeConfig)
 
 
 def load_config(file_path: Optional[str] = None) -> AgentConfiguration:
     """
-    Missing file: warn and fall back to defaults + env vars (matches the
-    original docstring, which the old code contradicted).
+    Missing file: warn and fall back to defaults + env vars.
     Malformed file: fail fast with a clear ConfigurationError.
     """
     path = Path(file_path) if file_path else PROJECT_ROOT / "config.yaml"
@@ -144,6 +165,31 @@ def load_config(file_path: Optional[str] = None) -> AgentConfiguration:
         raise ConfigurationError(f"Configuration file '{path}' is malformed: {exc}") from exc
 
     return AgentConfiguration.model_validate(yaml_data)
+
+
+def save_config(configuration: AgentConfiguration, file_path: Optional[str] = None) -> None:
+    """
+    Persists the configuration to YAML and hot-reloads the process-wide
+    singleton so changes take effect on the next request without a restart.
+
+    Secrets (API keys, Meta tokens) are never written to disk — they remain
+    sourced exclusively from the environment.
+    """
+    path = Path(file_path) if file_path else PROJECT_ROOT / "config.yaml"
+
+    data = configuration.model_dump(mode="json")
+    for section in ("llm_config", "embedding_config"):
+        data.get(section, {}).pop("api_key", None)
+    for secret_field in ("page_access_token", "app_secret", "verify_token"):
+        data.get("meta_config", {}).pop(secret_field, None)
+
+    path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    logger.info("Configuration saved to '%s'.", path)
+
+    # In-place hot-reload: modules that did `from utils.config import config`
+    # keep referencing the same object, so rebind its fields rather than the name.
+    for field_name in AgentConfiguration.model_fields:
+        object.__setattr__(config, field_name, getattr(configuration, field_name))
 
 
 config = load_config()
