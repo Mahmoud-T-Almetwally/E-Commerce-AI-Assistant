@@ -1,36 +1,63 @@
+# OmniCart AI Assistant — runtime configuration.
+# Secrets are sourced from the environment (.env) and are never written here.
+# Admins can hot-edit `llm_config` at runtime via PUT /api/llm-config.
+
 flask_config:
-  debug: true
-  host: "0.0.0.0"
+  host: 127.0.0.1
   port: 5000
+  debug: false
+  session_cookie_httponly: true
+  session_cookie_samesite: Lax
+  session_cookie_secure: false
+  permanent_session_lifetime_minutes: 720
 
 database_config:
-  url: "sqlite:///instance/ecommerce.db"
-  chroma_persist_directory: "./instance/chroma_db"
   echo_queries: false
-  connect_args:
-    check_same_thread: false
-
-system_context:
-  company_name: "Nexus Commerce"
-  tone: "Friendly, helpful, and concise"
-
-llm_config:
-  provider: "openai"
-  model_name: "gpt-4o-mini"
-  temperature: 0.2
-  max_tokens: 1000
-
-embedding_config:
-  provider: "local"
-  model_name: "nomic-embed-text"
-
-meta_config:
-  enabled: false
+  chroma_persist_directory: ./instance/chroma_db
+  checkpoint_path: ./instance/checkpoints.sqlite
 
 rag_config:
-  collection_name: "ecommerce_knowledge"
+  collection_name: ecommerce_knowledge
   max_file_size_mb: 10
   max_content_chars: 200000
   supported_extensions: [".txt", ".pdf", ".docx"]
   chunk_size: 1000
   chunk_overlap: 200
+  sync_on_startup: true
+  separators: ["
+
+", "
+", ".", " ", ""]
+
+system_context:
+  company_name: OmniCart
+  tone: Professional, helpful, and concise.
+
+llm_config:
+  provider: openai
+  model_name: gpt-4o-mini
+  temperature: 0.2
+  max_tokens: 2048
+  top_p: null
+  seed: null
+  max_retries: 3
+  timeout_seconds: 60
+  vision_capable: false   # gates chat file uploads
+
+embedding_config:
+  provider: openai
+  model_name: text-embedding-3-small
+
+meta_config:
+  enabled: false
+
+agent:
+  guard_enabled: true
+  guard_include_context: true
+  max_tool_retries: 2
+  tool_retry_backoff_seconds: 0.5
+  status_events_enabled: true
+  sensitive_tool_names: ["add_to_cart", "checkout"]
+  confirmation_timeout_seconds: 600
+  max_upload_mb: 5
+  allowed_upload_extensions: [".png", ".jpg", ".jpeg", ".webp", ".gif"]
