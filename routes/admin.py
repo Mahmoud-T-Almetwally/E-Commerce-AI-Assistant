@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 from werkzeug.security import generate_password_hash
 
-from database.db_setup import SessionLocal
+from database.db_setup import get_db
 from database.models import Product, Order, OrderItem, User, UserRole, OrderStatus, Tag
 from routes.auth import EMAIL_RE, PHONE_RE, admin_required
 from utils.pagination import get_pagination
@@ -125,7 +125,7 @@ def parse_product_form():
 @admin_bp.route('/')
 @admin_required
 def dashboard_home():
-    with SessionLocal() as db:
+    with get_db() as db:
         total_customers = db.query(User).filter(User.role == UserRole.CUSTOMER).count()
         total_orders = db.query(Order).count()
         active_orders = db.query(Order).filter(Order.status != OrderStatus.CANCELLED).count()
@@ -250,7 +250,7 @@ def list_products():
     min_price = request.args.get('min_price', '').strip()
     max_price = request.args.get('max_price', '').strip()
 
-    with SessionLocal() as db:
+    with get_db() as db:
         query = db.query(Product).options(joinedload(Product.tags))
 
         if search:
@@ -307,7 +307,7 @@ def add_product():
         if error:
             flash(error, 'danger')
         else:
-            with SessionLocal() as db:
+            with get_db() as db:
                 try:
                     new_product = Product(**data)
                     new_product.tags = process_tags(db, tags_str)
@@ -337,7 +337,7 @@ def add_product():
 @admin_bp.route('/products/<int:product_id>/edit', methods=['GET', 'POST'])
 @admin_required
 def edit_product(product_id):
-    with SessionLocal() as db:
+    with get_db() as db:
         product = db.query(Product).options(joinedload(Product.tags)).filter(Product.id == product_id).first()
 
         if not product:
@@ -383,7 +383,7 @@ def edit_product(product_id):
 @admin_bp.route('/products/<int:product_id>/delete', methods=['POST'])
 @admin_required
 def delete_product(product_id):
-    with SessionLocal() as db:
+    with get_db() as db:
         product = db.query(Product).filter(Product.id == product_id).first()
         if product:
             try:
@@ -415,7 +415,7 @@ def list_orders():
     start_date = request.args.get('start_date', '').strip()
     end_date = request.args.get('end_date', '').strip()
 
-    with SessionLocal() as db:
+    with get_db() as db:
         query = db.query(Order).options(
             joinedload(Order.customer),
             joinedload(Order.items),
@@ -470,7 +470,7 @@ def list_orders():
 @admin_required
 def update_order_status(order_id):
     new_status_val = request.form.get('status')
-    with SessionLocal() as db:
+    with get_db() as db:
         order = db.query(Order).filter(Order.id == order_id).with_for_update().first()
         if not order:
             flash('Order not found.', 'danger')
@@ -523,7 +523,7 @@ def list_customers():
     search = request.args.get('search', '').strip()
     is_active = request.args.get('is_active', '').strip()
 
-    with SessionLocal() as db:
+    with get_db() as db:
         query = db.query(User).filter(User.role == UserRole.CUSTOMER)
 
         if search:
@@ -587,7 +587,7 @@ def create_admin():
             flash(error, 'danger')
         return redirect(url_for('admin.list_customers'))
 
-    with SessionLocal() as db:
+    with get_db() as db:
         existing = db.query(User).filter(User.email == email).first()
         if existing:
             flash(f'A user with email "{email}" already exists.', 'danger')

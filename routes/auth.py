@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from database.db_setup import SessionLocal
+from database.db_setup import get_db
 from database.models import User, UserRole
 from utils.auth import admin_required, login_required  
 from utils.extensions import limiter
@@ -37,7 +37,7 @@ def login():
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
 
-        with SessionLocal() as db:
+        with get_db() as db:
             user = db.query(User).filter(User.email == email).first()
 
             if user and user.password_hash and check_password_hash(user.password_hash, password):
@@ -111,7 +111,7 @@ def register():
             return render_template('auth/register.html',
                                    name=name, email=email, phone=phone)
 
-        with SessionLocal() as db:
+        with get_db() as db:
             existing = db.query(User).filter(User.email == email).first()
             if existing:
                 flash('An account with this email already exists. Please log in instead.', 'danger')

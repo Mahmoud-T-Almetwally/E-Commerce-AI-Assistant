@@ -8,7 +8,7 @@ from langchain_core.runnables import RunnableConfig
 from sqlalchemy import or_, func, update
 from sqlalchemy.orm import joinedload
 
-from database.db_setup import SessionLocal
+from database.db_setup import get_db
 from database.models import Product, CartItem, Order, OrderItem, Tag, OrderStatus
 from database.rag_manager import get_rag_manager
 from utils.sanitizers import escape_like
@@ -29,7 +29,7 @@ async def display_recommendations(
 ) -> str:
     """Searches the database for products matching the criteria, displays them to the user via UI."""
     def _db_op():
-        with SessionLocal() as db:
+        with get_db() as db:
             q = db.query(Product)
             if query:
                 escaped = escape_like(query)
@@ -86,7 +86,7 @@ async def add_to_cart(config: RunnableConfig,
         return "Error: User is not logged in."
 
     def _db_op():
-        with SessionLocal() as db:
+        with get_db() as db:
             product = db.query(Product).filter(Product.id == product_id).with_for_update().first()
             if not product:
                 return "Error: Product not found."
@@ -120,7 +120,7 @@ async def view_cart(config: RunnableConfig) -> str:
         return "Error: User is not logged in."
 
     def _db_op():
-        with SessionLocal() as db:
+        with get_db() as db:
             cart_items = db.query(CartItem).options(joinedload(CartItem.product)) \
                 .filter(CartItem.user_id == user_id).all()
             if not cart_items:
@@ -147,7 +147,7 @@ async def checkout(config: RunnableConfig) -> str:
         return "Error: User is not logged in."
 
     def _db_op():
-        with SessionLocal() as db:
+        with get_db() as db:
             cart_items = db.query(CartItem).options(joinedload(CartItem.product)) \
                 .filter(CartItem.user_id == user_id).all()
             if not cart_items:
@@ -192,7 +192,7 @@ async def check_order_status(config: RunnableConfig,
         return "Error: User is not logged in."
 
     def _db_op():
-        with SessionLocal() as db:
+        with get_db() as db:
             order = db.query(Order).filter(Order.id == order_id).first()
             if not order:
                 return "Error: Order not found."

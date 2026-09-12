@@ -12,7 +12,7 @@ from decimal import Decimal
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import generate_password_hash
 
-from database.db_setup import engine, SessionLocal, init_db
+from database.db_setup import engine, get_db, init_db
 from database.models import (
     Base, User, UserRole, OrderStatus, Tag, Product,
     CartItem, Order, OrderItem, KnowledgeDocument
@@ -37,7 +37,7 @@ def generate_seed_data():
     """Generates mock data for all models and inserts it into the database."""
     random.seed(42)  # reproducible demo data
 
-    db = SessionLocal()
+    db = get_db()
 
     try:
         print("Seeding Tags...")

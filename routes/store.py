@@ -4,7 +4,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from sqlalchemy import or_, update, func
 from sqlalchemy.orm import joinedload
 
-from database.db_setup import SessionLocal
+from database.db_setup import get_db
 from database.models import Product, Tag, CartItem, Order, OrderItem, OrderStatus
 from routes.auth import login_required
 from utils.exceptions import OutOfStockError
@@ -28,7 +28,7 @@ def inject_cart_count():
     user_id = session.get('user_id')
     if not user_id:
         return {'cart_count': 0}
-    with SessionLocal() as db:
+    with get_db() as db:
         count = db.query(func.sum(CartItem.quantity)).filter(CartItem.user_id == user_id).scalar()
     return {'cart_count': count or 0}
 
@@ -49,7 +49,7 @@ def list_products():
     min_price = request.args.get('min_price', '').strip()
     max_price = request.args.get('max_price', '').strip()
 
-    with SessionLocal() as db:
+    with get_db() as db:
         query = db.query(Product).options(joinedload(Product.tags))
 
         if search:
@@ -109,7 +109,7 @@ def list_products():
 @store_bp.route('/products/<int:product_id>')
 def product_detail(product_id):
     """Public route to view a single product's details."""
-    with SessionLocal() as db:
+    with get_db() as db:
         product = db.query(Product).options(joinedload(Product.tags)).filter(Product.id == product_id).first()
 
         if not product:
@@ -131,7 +131,7 @@ def product_detail(product_id):
 def view_cart():
     """Protected route to view the user's shopping cart."""
     user_id = session.get('user_id')
-    with SessionLocal() as db:
+    with get_db() as db:
         cart_items = db.query(CartItem).options(
             joinedload(CartItem.product)
         ).filter(CartItem.user_id == user_id).all()
@@ -154,7 +154,7 @@ def add_to_cart():
 
     user_id = session.get('user_id')
 
-    with SessionLocal() as db:
+    with get_db() as db:
         product = db.query(Product).filter(Product.id == product_id).first()
 
         if not product:
@@ -199,7 +199,7 @@ def update_cart():
 
     user_id = session.get('user_id')
 
-    with SessionLocal() as db:
+    with get_db() as db:
         cart_item = db.query(CartItem).options(joinedload(CartItem.product)).filter(
             CartItem.id == cart_item_id,
             CartItem.user_id == user_id
@@ -222,7 +222,7 @@ def update_cart():
 def remove_from_cart(item_id):
     """Protected route to completely remove an item from the cart."""
     user_id = session.get('user_id')
-    with SessionLocal() as db:
+    with get_db() as db:
         cart_item = db.query(CartItem).filter(CartItem.id == item_id, CartItem.user_id == user_id).first()
         if cart_item:
             db.delete(cart_item)
@@ -239,7 +239,7 @@ def remove_from_cart(item_id):
 def checkout():
     """Protected route to process the cart and create an order."""
     user_id = session.get('user_id')
-    with SessionLocal() as db:
+    with get_db() as db:
         cart_items = db.query(CartItem).options(
             joinedload(CartItem.product)
         ).filter(CartItem.user_id == user_id).all()
@@ -306,7 +306,7 @@ def checkout():
 def list_orders():
     """Protected route for users to view their past orders."""
     user_id = session.get('user_id')
-    with SessionLocal() as db:
+    with get_db() as db:
         orders = db.query(Order).options(
             joinedload(Order.items).joinedload(OrderItem.product)
         ).filter(
@@ -321,7 +321,7 @@ def list_orders():
 def order_detail(order_id):
     """Protected route for users to view details of a specific order."""
     user_id = session.get('user_id')
-    with SessionLocal() as db:
+    with get_db() as db:
         order = db.query(Order).options(
             joinedload(Order.items).joinedload(OrderItem.product)
         ).filter(Order.id == order_id, Order.customer_id == user_id).first()

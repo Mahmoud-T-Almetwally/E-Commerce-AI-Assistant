@@ -7,7 +7,7 @@ from typing import List, Optional
 from flask import jsonify, request
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-from database.db_setup import SessionLocal
+from database.db_setup import get_db
 from database.models import Conversation, UserRole
 from utils.auth import get_current_user
 from utils.config import config
@@ -33,7 +33,7 @@ def checkpointer_context():
 
 
 def find_conversation(thread_id: str) -> Optional[Conversation]:
-    with SessionLocal() as db:
+    with get_db() as db:
         return db.query(Conversation).filter(Conversation.thread_id == thread_id).first()
 
 
@@ -43,7 +43,7 @@ def get_or_create_conversation(thread_id: Optional[str], user_id: Optional[int])
     conversation for the first authenticated user to send a message in it.
     Ownership validation must happen before calling this (see the route).
     """
-    with SessionLocal() as db:
+    with get_db() as db:
         conv = None
         if thread_id:
             conv = db.query(Conversation).filter(Conversation.thread_id == thread_id).first()
@@ -58,7 +58,7 @@ def get_or_create_conversation(thread_id: Optional[str], user_id: Optional[int])
 
 
 def touch_conversation(thread_id: str) -> None:
-    with SessionLocal() as db:
+    with get_db() as db:
         db.query(Conversation).filter(Conversation.thread_id == thread_id).update(
             {Conversation.updated_at: datetime.now(timezone.utc)}
         )
@@ -67,7 +67,7 @@ def touch_conversation(thread_id: str) -> None:
 
 def list_conversations(user) -> List[Conversation]:
     """Customers see only their own threads; admins see everything."""
-    with SessionLocal() as db:
+    with get_db() as db:
         q = db.query(Conversation).order_by(Conversation.updated_at.desc())
         if user.role != UserRole.ADMIN:
             q = q.filter(Conversation.user_id == user.id)

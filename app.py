@@ -5,7 +5,7 @@ from flask import Flask, flash, redirect, request
 from flask_wtf.csrf import CSRFError
 from werkzeug.exceptions import RequestEntityTooLarge
 
-from database.db_setup import SessionLocal, init_db
+from database.db_setup import get_db, init_db
 from database.models import KnowledgeDocument
 from database.rag_manager import get_rag_manager
 from routes import register_routes
@@ -25,7 +25,7 @@ def _reconcile_vector_store() -> None:
     calls. Never blocks startup — RAG degrades gracefully on failure.
     """
     try:
-        with SessionLocal() as db:
+        with get_db() as db:
             docs = db.query(KnowledgeDocument).all()
         report = get_rag_manager().reconcile(docs)
         if any(report.values()):
