@@ -4,6 +4,8 @@ from pydantic import ValidationError
 from utils.auth import admin_required
 from utils.config import LLMConfig, config, save_config
 
+from agent.providers import ModelFactory
+
 bp = Blueprint("llm_config", __name__, url_prefix="/api/llm-config")
 
 # Fields an admin may tune at runtime. `api_key` is deliberately excluded —
@@ -19,6 +21,28 @@ def _masked_dump() -> dict:
     if data.get("api_key"):
         data["api_key"] = "********"
     return data
+
+
+@bp.post("/test")
+@admin_required
+def test_llm():
+    """
+    Builds the configured LLM and sends a trivial ping, so provider/parameter
+    mistakes (e.g. a Google provider expecting `max_output_tokens` instead of
+    `max_tokens`, or a reasoning model rejecting `max_tokens`) surface in the
+    admin UI instead of failing silently on the first customer message.
+    """
+    try:
+        llm = ModelFactory.get_llm(config.llm_config)
+        response = llm.invoke("Reply with the single word: pong")
+        return jsonify({
+            "ok": True,
+            "provider": config.llm_config.provider,
+            "model": config.llm_config.model_name,
+            "reply": str(getattr(response, "content", response))[:200],
+        })
+    except Exception as exc:  # noqa: BLE001 — the error message IS the feature
+        return jsonify({"ok": False, "error": str(exc)[:500]}), 400
 
 
 @bp.get("")

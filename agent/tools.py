@@ -1,5 +1,6 @@
 import asyncio
 from typing import List, Optional
+import logging
 
 from pydantic import Field
 from langchain_core.tools import tool
@@ -11,6 +12,9 @@ from database.db_setup import SessionLocal
 from database.models import Product, CartItem, Order, OrderItem, Tag, OrderStatus
 from database.rag_manager import get_rag_manager
 from utils.sanitizers import escape_like
+
+
+logger = logging.getLogger(__name__)
 
 
 @tool
@@ -58,14 +62,15 @@ async def display_recommendations(
         "image_url": p.image_url,
     } for p in products]
 
-    session_id = config.get("configurable", {}).get("thread_id")
-    try:
-        from utils.extensions import socketio
-        # server.emit works outside a request context (tools run on worker threads).
-        socketio.server.emit("product_carousel", {"products": product_data},
-                             room=session_id, namespace="/chat")
-    except Exception:
-        pass
+    room = config.get("configurable", {}).get("thread_id")
+    if room:
+        try:
+            from utils.extensions import socketio
+            # server.emit works outside a request context (tools run on worker threads).
+            socketio.server.emit("product_carousel", {"products": product_data},
+                                 room=room, namespace="/chat")
+        except Exception:
+            logger.warning("Failed to push product carousel to room %s", room, exc_info=True)
 
     return f"Successfully displayed {len(products)} recommended products to the user."
 
@@ -82,7 +87,7 @@ async def add_to_cart(config: RunnableConfig,
 
     def _db_op():
         with SessionLocal() as db:
-            product = db.query(Product).filter(Product.id == product_id).first()
+            product = db.query(Product).filter(Product.id == product_id).with_for_update().first()
             if not product:
                 return "Error: Product not found."
 

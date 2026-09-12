@@ -80,9 +80,8 @@ class MetaConfig(BaseModel):
 
 class DatabaseConfig(BaseModel):
     url: str = Field(default_factory=lambda: os.environ.get("DATABASE_URL") or f"sqlite:///{(PROJECT_ROOT / 'instance' / 'ecommerce.db').as_posix()}")
-    chroma_persist_directory: str = Field(default_factory=lambda: os.environ.get("CHROMA_DB_DIR", "./instance/chroma_db"))
-    checkpoint_path: str = Field(default_factory=lambda: os.environ.get(
-        "LANGGRAPH_CHECKPOINT_PATH", "./instance/checkpoints.sqlite"))
+    chroma_persist_directory: str = Field(default_factory=lambda: os.environ.get("CHROMA_DB_DIR", str(PROJECT_ROOT / "instance" / "chroma_db")))
+    checkpoint_path: str = Field(default_factory=lambda: os.environ.get("LANGGRAPH_CHECKPOINT_PATH", str(PROJECT_ROOT / "instance" / "checkpoints.sqlite")))
     echo_queries: bool = False
     connect_args: Dict[str, Any] = Field(default_factory=lambda: {"check_same_thread": False})
 
@@ -122,6 +121,7 @@ class AgentRuntimeConfig(BaseModel):
     sensitive_tool_names: List[str] = Field(default_factory=lambda: ["add_to_cart", "checkout"])
     confirmation_timeout_seconds: int = Field(default=600, gt=0)
     max_upload_mb: int = Field(default=5, gt=0)
+    max_message_chars: int = Field(default=8_000, gt=0)
     allowed_upload_extensions: List[str] = Field(
         default_factory=lambda: [".png", ".jpg", ".jpeg", ".webp", ".gif"])
 
@@ -178,10 +178,15 @@ def save_config(configuration: AgentConfiguration, file_path: Optional[str] = No
     path = Path(file_path) if file_path else PROJECT_ROOT / "config.yaml"
 
     data = configuration.model_dump(mode="json")
-    for section in ("llm_config", "embedding_config"):
-        data.get(section, {}).pop("api_key", None)
-    for secret_field in ("page_access_token", "app_secret", "verify_token"):
-        data.get("meta_config", {}).pop(secret_field, None)
+    for section, secret_fields in (
+        ("llm_config", ("api_key",)),
+        ("embedding_config", ("api_key",)),
+        ("meta_config", ("page_access_token", "app_secret", "verify_token")),
+        ("flask_config", ("secret_key",)),
+        ("database_config", ("url",)),
+    ):
+        for field_name in secret_fields:
+            (data.get(section) or {}).pop(field_name, None)
 
     path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
     logger.info("Configuration saved to '%s'.", path)
