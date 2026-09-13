@@ -158,7 +158,7 @@ def make_tool_node(tools: List[Any]):
     return tool_node
 
 
-def make_hitl_tool_node(tools: List[Any]):
+def make_hitl_tool_node(all_tools: List[Any], sensitive_names: set):
     """
     Wraps sensitive tools in a graph node that always asks the user for
     confirmation first, using langgraph's dynamic `interrupt()`.
@@ -169,42 +169,37 @@ def make_hitl_tool_node(tools: List[Any]):
       - approved  -> execute with the standard retry/error semantics,
       - declined  -> feed a structured DECLINED ToolMessage back to the model.
     """
-    tool_names = {t.name for t in tools}
-
     async def sensitive_tools(state: AgentState, runnable_config) -> Dict[str, Any]:
         messages = state.get("messages") or []
         pending = []
         if messages:
             for tc in (getattr(messages[-1], "tool_calls", None) or []):
-                if tc.get("name") in tool_names:
+                if tc.get("name") in sensitive_names:
                     pending.append({"id": tc.get("id"), "name": tc.get("name"),
                                     "args": tc.get("args") or {}})
-        if not pending:
-            return {}
+        
+        if pending:
+            decision = interrupt({"type": "tool_confirmation", "tool_calls": pending})
+            approved = bool(decision.get("approved")) if isinstance(decision, dict) else bool(decision)
+            note = (decision.get("note") or "").strip() if isinstance(decision, dict) else ""
 
-        decision = interrupt({"type": "tool_confirmation", "tool_calls": pending})
-        approved = bool(decision.get("approved")) if isinstance(decision, dict) else bool(decision)
-        note = (decision.get("note") or "").strip() if isinstance(decision, dict) else ""
-
-        if not approved:
-            return {"messages": [
-                ToolMessage(
-                    content=(
-                        f"ACTION_DECLINED: the user declined to confirm '{tc['name']}'"
-                        + (f" (reason: {sanitize_text(note, max_length=200)})." if note else ".")
-                        + " Acknowledge the refusal and do not re-attempt unless the user "
-                          "explicitly asks you to."
-                    ),
-                    tool_call_id=tc.get("id") or "",
-                    status="error",
-                )
-                for tc in pending
-            ]}
-
-        if config.agent.status_events_enabled:
-            resolve_emit((runnable_config or {}).get("configurable"))(
-                "confirmation_granted", {"tools": [tc["name"] for tc in pending]})
-        return await execute_tool_calls(state, tools, runnable_config)
+            if not approved:
+                return {"messages": [
+                    ToolMessage(
+                        content=(f"ACTION_DECLINED: the user declined to confirm '{tc['name']}'"
+                                 + (f" (reason: {sanitize_text(note, max_length=200)})." if note else ".")
+                                 + " Acknowledge the refusal and do not re-attempt unless asked."),
+                        tool_call_id=tc.get("id") or "",
+                        status="error",
+                    )
+                    for tc in pending
+                ]}
+                
+            if config.agent.status_events_enabled:
+                resolve_emit((runnable_config or {}).get("configurable"))(
+                    "confirmation_granted", {"tools": [tc["name"] for tc in pending]})
+                
+        return await execute_tool_calls(state, all_tools, runnable_config)
 
     sensitive_tools.__name__ = "sensitive_tools"
     return sensitive_tools

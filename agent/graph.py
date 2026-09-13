@@ -30,8 +30,9 @@ SENSITIVE_TOOL_NAMES = frozenset(config.agent.sensitive_tool_names)
 safe_tools = [t for t in sales_tools + cs_tools if t.name not in SENSITIVE_TOOL_NAMES]
 sensitive_tools = [t for t in sales_tools + cs_tools if t.name in SENSITIVE_TOOL_NAMES]
 
-safe_tool_node = make_tool_node(safe_tools)
-sensitive_tool_node = make_hitl_tool_node(sensitive_tools)
+all_tools = sales_tools + cs_tools
+safe_tool_node = make_tool_node(all_tools)
+sensitive_tool_node = make_hitl_tool_node(all_tools, SENSITIVE_TOOL_NAMES)
 
 
 def _get_llm():
