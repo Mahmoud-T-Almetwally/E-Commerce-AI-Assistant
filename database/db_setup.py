@@ -36,17 +36,3 @@ def init_db() -> None:
                 os.makedirs(db_dir, exist_ok=True)
 
     Base.metadata.create_all(bind=engine)
-
-
-def get_db() -> Generator[Session, None, None]:
-    """
-    Provides a transactional scope around a series of database operations.
-    
-    Yields:
-        Session: A SQLAlchemy database session.
-    """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()

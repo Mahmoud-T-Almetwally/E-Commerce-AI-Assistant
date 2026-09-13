@@ -18,7 +18,7 @@ from typing import Optional
 
 from flask import flash, g, jsonify, redirect, request, session, url_for
 
-from database.db_setup import get_db
+from database.db_setup import SessionLocal
 from database.models import User, UserRole
 
 
@@ -37,7 +37,7 @@ def get_current_user() -> Optional[User]:
     user: Optional[User] = None
     user_id = session.get("user_id")
     if user_id is not None:
-        with get_db() as db:
+        with SessionLocal() as db:
             candidate = db.get(User, user_id)
             if candidate is not None and candidate.is_active:
                 user = candidate

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
-from database.db_setup import get_db
+from database.db_setup import SessionLocal
 from database.models import KnowledgeDocument
 from database.rag_manager import get_rag_manager
 from routes.auth import admin_required
@@ -56,7 +56,7 @@ def _rerender_add_form(title, content, doc_type):
 def list_knowledge():
     """List all RAG documents in the admin dashboard."""
     page = max(request.args.get('page', 1, type=int), 1)
-    with get_db() as db:
+    with SessionLocal() as db:
         query = (
             db.query(KnowledgeDocument)
             .order_by(KnowledgeDocument.created_at.desc(), KnowledgeDocument.id.desc())
@@ -118,7 +118,7 @@ def add_knowledge():
             flash(error, "danger")
             return _rerender_add_form(title, content, doc_type)
 
-        with get_db() as db:
+        with SessionLocal() as db:
             doc_id = None
             try:
                 new_doc = KnowledgeDocument(title=title, content=content, doc_type=doc_type)
@@ -156,7 +156,7 @@ def add_knowledge():
 @admin_required
 def edit_knowledge(doc_id):
     """Edit an existing document in both databases."""
-    with get_db() as db:
+    with SessionLocal() as db:
         doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.id == doc_id).first()
         if not doc:
             flash("Document not found.", "danger")
@@ -217,7 +217,7 @@ def edit_knowledge(doc_id):
 @admin_required
 def delete_knowledge(doc_id):
     """Delete a document from both SQLite and ChromaDB."""
-    with get_db() as db:
+    with SessionLocal() as db:
         doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.id == doc_id).first()
         if not doc:
             flash("Document not found.", "danger")
