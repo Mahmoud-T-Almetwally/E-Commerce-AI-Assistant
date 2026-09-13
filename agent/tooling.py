@@ -56,10 +56,12 @@ def validate_tool_arguments(tool, args: Dict[str, Any]) -> Dict[str, Any]:
 
 def _is_retryable(exc: BaseException) -> bool:
     """Transient infrastructure failures may be retried; everything else may not."""
+    if getattr(exc, "retryable", False):
+        return True
     try:
         import sqlalchemy.exc as sa_exc
         operational = (sa_exc.OperationalError,)
-    except ImportError:  # pragma: no cover
+    except ImportError:
         operational = ()
     return isinstance(exc, (asyncio.TimeoutError, ConnectionError) + operational)
 
