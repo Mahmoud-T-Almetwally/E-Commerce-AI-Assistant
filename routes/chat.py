@@ -258,7 +258,11 @@ async def _process_user_message(conv, content: str,
                        "image_url": {"url": att["data_url"]}})
     if not blocks:
         blocks.append({"type": "text", "text": "[attachment]"})
-    human = HumanMessage(content=blocks if len(blocks) > 1 else blocks[0]["text"])
+
+    if len(blocks) == 1 and blocks[0]["type"] == "text":
+        human = HumanMessage(content=blocks[0]["text"])
+    else:
+        human = HumanMessage(content=blocks)
 
     def emit_status(stage: str, payload: Optional[Dict[str, Any]] = None) -> None:
         publish_event(conv.thread_id, "status",
