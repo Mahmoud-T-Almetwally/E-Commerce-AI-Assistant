@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sqlite3
 import threading
 
 from utils.config import config
@@ -25,6 +26,10 @@ def get_checkpointer():
                 from langgraph.checkpoint.sqlite import SqliteSaver
                 path = config.database_config.checkpoint_path
                 os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-                _CHECKPOINTER = SqliteSaver.from_conn_string(path)
+                conn = sqlite3.connect(path, check_same_thread=False)
+                
+                _CHECKPOINTER = SqliteSaver(conn)
+
+                _CHECKPOINTER.setup()
                 logger.info("LangGraph sqlite checkpointer ready at %s", path)
     return _CHECKPOINTER

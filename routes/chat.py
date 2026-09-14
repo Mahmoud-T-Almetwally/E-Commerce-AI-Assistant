@@ -720,8 +720,15 @@ def _stream_turn(user_id: int, conversation_id: int, thread_id: str,
         collector.note_interrupt(interrupt_payload)
         if auto_decline:
             return "interrupted"           # caller resumes with Command(resume=False)
+        
         record = _register_pending(user_id, conversation_id, thread_id, interrupt_payload)
         emitter.confirmation(record)
+
+        def _delayed_timeout_sweep():
+            socketio.sleep(int(config.agent.confirmation_timeout_seconds) + 1)
+            _sweep_expired_pending(user_id)
+            
+        socketio.start_background_task(_delayed_timeout_sweep)
         return "interrupted"
 
     final = _final_assistant_message(graph, run_config)
