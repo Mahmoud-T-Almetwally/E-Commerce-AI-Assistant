@@ -30,8 +30,8 @@ system_context:
   tone: Professional, helpful, and concise.
 
 llm_config:
-  provider: openai
-  model_name: gpt-4o-mini
+  provider: groq
+  model_name: openai/gpt-oss-20b
   temperature: 0.2
   max_tokens: 2048
   top_p: null
@@ -41,7 +41,7 @@ llm_config:
   vision_capable: false   # gates chat file uploads
 
 embedding_config:
-  provider: openai
+  provider: local
   model_name: text-embedding-3-small
 
 meta_config:
