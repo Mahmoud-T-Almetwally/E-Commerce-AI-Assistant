@@ -1,46 +1,109 @@
-{% extends 'store/base.html' %}
-{% from 'macros.html' import csrf_field %}
-{% block title %}AI Assistant · {{ company_name }}{% endblock %}
-{% block extra_css %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">{% endblock %}
+{% extends "base.html" %}
+{% import "macros.html" as macros %}
 
-{% block content %}
-<div class="section-head">
-  <h1>AI Assistant</h1>
-  <span class="muted small">answers grounded in our knowledge base &amp; live catalog</span>
-</div>
+{% block title %}Shopping Assistant · {{ company_name }}{% endblock %}
 
-{# TODO(agent): wire this panel to the LangGraph endpoint.
-   Plan: POST to a JSON endpoint with {message, thread_id}; render replies as
-   .msg-user / .msg-bot bubbles in #chat-log; thread persists via the
-   Conversation model (LangGraph checkpointer). #}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
+{% endblock %}
 
-<div class="chat-panel">
-  <div class="chat-head">
-    <span class="chat-dot"></span>
-    <div>
-      <strong>{{ company_name }} Assistant</strong>
-      <div class="small muted">Online · remembers this conversation</div>
-    </div>
+{% block body_class %}chat-page{% endblock %}
+
+{% block layout %}
+<header class="chat-page-header">
+  <div class="brand-row">
+    <span class="logo">{{ company_name[:1] }}</span>
+    <span class="chat-brand-name">{{ company_name }}</span>
   </div>
+  <nav class="chat-nav" aria-label="Main">
+    <a href="{{ url_for('store.list_products') }}">Shop</a>
+    <a href="{{ url_for('store.view_cart') }}">Cart</a>
+    <a href="{{ url_for('auth.logout') }}">Log out</a>
+  </nav>
+</header>
 
-  <div class="chat-log" id="chat-log">
-    <div class="msg msg-bot">
-      Hi {{ session.get('name', 'there') }} 👋 I can recommend products, check live stock,
-      and answer questions about shipping, returns and warranty.
-      <div class="msg-meta">just now</div>
-    </div>
+<main class="chat-main">
+  {{ macros.flashes() }}
+
+  <div class="chat-customer-layout">
+
+    <aside class="conversations card" aria-label="Conversations">
+      <div class="card-head">
+        <h2>Chats</h2>
+        <button type="button" id="new-chat-btn" class="btn btn-sm">+ New chat</button>
+      </div>
+      <div class="conv-list" id="conv-list">
+        {% for c in conversations %}
+        <a class="conv-item{{ ' active' if c.active else '' }}" data-conversation-id="{{ c.id }}"
+           href="{{ url_for('chat.chat_history', conversation_id=c.id) }}">
+          <span class="conv-label">{{ c.label }}</span>
+          <span class="conv-dot" aria-hidden="true"></span>
+        </a>
+        {% else %}
+        <div class="conv-empty muted small">No conversations yet.</div>
+        {% endfor %}
+      </div>
+    </aside>
+
+    <section class="chat-panel" aria-label="Shopping assistant">
+      <div class="chat-head">
+        <h2>Shopping Assistant</h2>
+        <span class="conn-indicator">
+          <span class="chat-dot" id="conn-dot" aria-hidden="true"></span>
+          <span id="conn-label">Connecting…</span>
+        </span>
+      </div>
+
+      <div class="chat-log" id="chat-log" role="log" aria-live="polite"></div>
+
+      <div class="suggest">
+        <button type="button" class="tag" data-suggest="Show me popular products">Popular products</button>
+        <button type="button" class="tag" data-suggest="What's the status of my latest order?">Order status</button>
+        <button type="button" class="tag" data-suggest="What is your return policy?">Return policy</button>
+        <button type="button" class="tag" data-suggest="Help me check out my cart">Checkout help</button>
+      </div>
+
+      <div class="status-line" id="status-line" aria-live="polite">
+        <span id="status-text"></span><span class="status-dots" id="status-dots"></span>
+      </div>
+
+      <div class="attachment-tray" id="attachment-tray"></div>
+
+      <form class="composer" id="chat-form" autocomplete="off">
+        <button type="button" id="attach-btn" class="btn attach-btn" aria-label="Attach an image"
+                title="Attach an image"{{ ' hidden' if not chat_flags.uploads_enabled else '' }}>📎</button>
+        <input type="file" id="file-input"
+               accept="{{ chat_flags.allowed_upload_extensions | join(',') }}"
+               {{ 'disabled' if not chat_flags.uploads_enabled else '' }} hidden>
+        <input type="text" id="chat-input" placeholder="Ask about products, orders, policies…"
+               maxlength="{{ chat_flags.max_message_chars }}" aria-label="Message">
+        <button type="submit" id="send-btn" class="btn btn-primary">Send</button>
+      </form>
+    </section>
+
   </div>
+</main>
 
-  <div class="suggest">
-    <button type="button" class="tag" data-suggest="What's your return policy?">Return policy</button>
-    <button type="button" class="tag" data-suggest="Recommend a laptop under $800">Recommend a laptop</button>
-    <button type="button" class="tag" data-suggest="Where is my order?">Order status</button>
-  </div>
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+{% endblock %}
 
-  <form class="composer" method="post" action="{{ url_for('chat.customer_chat') }}">
-    {{ csrf_field() }}
-    <input type="text" id="chat-input" name="message" placeholder="Ask anything…" autocomplete="off" required>
-    <button class="btn btn-primary" type="submit">Send</button>
-  </form>
-</div>
+{% block extra_js %}
+<script id="chat-config" type="application/json">
+{
+  "csrfToken": {{ csrf_token() | tojson }},
+  "userName": {{ user_name | tojson }},
+  "urls": {
+    "ping": {{ url_for('chat.chat_ping') | tojson }},
+    "upload": {{ url_for('chat.chat_upload') | tojson }},
+    "productLookup": {{ url_for('lookup.lookup_products') | tojson }},
+    "historyBase": {{ url_for('chat.chat_history', conversation_id=0) | tojson }},
+    "login": {{ url_for('auth.login') | tojson }},
+    "productImageFallback": {{ url_for('static', filename='images/default-product.png') | tojson }}
+  },
+  "flags": {{ chat_flags | tojson }},
+  "initialConversationId": {{ initial_conversation_id | tojson }}
+}
+</script>
+<script src="{{ url_for('static', filename='js/vendor/socket.io.min.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/chat.js') }}" defer></script>
 {% endblock %}
