@@ -1,7 +1,7 @@
 import logging
 from datetime import timedelta
 
-from flask import Flask, flash, redirect, request
+from flask import Flask, flash, redirect, request, jsonify
 from flask_wtf.csrf import CSRFError
 from werkzeug.exceptions import RequestEntityTooLarge
 
@@ -87,6 +87,15 @@ def create_app() -> Flask:
 
     @app.errorhandler(CSRFError)
     def handle_csrf_error(e):
+        wants_json = (
+            request.path.startswith("/chat/")
+            or request.accept_mimetypes.best == "application/json"
+        )
+        if wants_json:
+            return jsonify(
+                {"error": "Your session expired or the request was tampered with. "
+                          "Please refresh the page and try again."}
+            ), 400
         flash("Your session expired or the form was tampered with. Please try again.", "danger")
         return redirect(request.referrer or '/')
 

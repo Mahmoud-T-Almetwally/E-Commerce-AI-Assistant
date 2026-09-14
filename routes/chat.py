@@ -133,31 +133,70 @@ def _finalize_stats(collector: TurnStatsCollector, status: str, thread_id: str) 
         logger.debug("Stats finalization failed.", exc_info=True)
 
 
+def _conversation_label(when) -> str:
+    """Compact sidebar label: 'Today 14:05', 'Yesterday 09:12', else a date."""
+    if when is None:
+        return "Conversation"
+    now = datetime.now()
+    try:
+        if when.date() == now.date():
+            return when.strftime("Today %H:%M")
+        if when.date() == (now - timedelta(days=1)).date():
+            return when.strftime("Yesterday %H:%M")
+        return when.strftime("%a %d %b %Y")
+    except Exception:
+        return "Conversation"
+
+
 @chat_bp.route("/chat")
 @login_required
 def chat_page():
-    """Chat page (browser); the socket carries all live traffic."""
+    """
+    Chat page (browser); the socket carries all live traffic.
+    ?conversation_id= preselects an owned conversation; foreign/unknown ids
+    render a plain fresh page (no redirect loops).
+    """
     user = get_current_user()
+    requested_id = request.args.get("conversation_id", type=int)
+
     with SessionLocal() as db:
         rows = (db.query(Conversation)
                 .filter(Conversation.user_id == user.id)
                 .order_by(Conversation.updated_at.desc())
                 .limit(50).all())
         conversations = [{
-            "id": c.id,
-            "created_at": c.created_at.isoformat() if c.created_at else None,
-            "updated_at": c.updated_at.isoformat() if c.updated_at else None,
-        } for c in rows]
+            "id": row.id,
+            "label": _conversation_label(row.updated_at or row.created_at),
+        } for row in rows]
+
+        initial_conversation_id = None
+        if requested_id is not None:
+            owned = (db.query(Conversation.id)
+                     .filter(Conversation.id == requested_id,
+                             Conversation.user_id == user.id)
+                     .first() is not None)
+            if owned:
+                initial_conversation_id = requested_id
+        for c in conversations:
+            c["active"] = (c["id"] == initial_conversation_id)
+
     return render_template("chat/customer.html",
                            conversations=conversations,
-                           chat_flags=_chat_flags())
+                           chat_flags=_chat_flags(),
+                           user_name=user.name,
+                           initial_conversation_id=initial_conversation_id)
 
 
 @chat_bp.route("/chat/ping")
 @limiter.limit("120 per minute")
 def chat_ping():
-    """Liveness heartbeat driving the client's connection indicator."""
-    return jsonify({"ok": True, "server_time": _now().isoformat(), **_chat_flags()})
+    """Liveness heartbeat: connection indicator, flag sync, session probe."""
+    return jsonify({
+        "ok": True,
+        "server_time": _now().isoformat(),
+        "authenticated": get_current_user() is not None,
+        **_chat_flags(),
+    })
 
 
 @chat_bp.route("/chat/history/<int:conversation_id>")
@@ -190,7 +229,20 @@ def chat_history(conversation_id):
                     continue
                 messages.append({"role": "assistant", "content": text,
                                  "interim": bool(getattr(m, "tool_calls", None))})
-        # ToolMessages are operational noise; the UI renders agent notes instead.
+            elif m.type == "tool":
+                try:
+                    envelope = json.loads(m.content)
+                except (TypeError, ValueError):
+                    continue
+                ui_event = envelope.get("ui_event") if isinstance(envelope, dict) else None
+                if (isinstance(ui_event, dict)
+                        and ui_event.get("event") == "display_product_carousel"):
+                    try:
+                        ids = [int(i) for i in ui_event.get("product_ids") or []][:12]
+                    except (TypeError, ValueError):
+                        continue
+                    if ids:
+                        messages.append({"role": "carousel", "product_ids": ids})
         with _LOCK:
             request_id = _PENDING_BY_THREAD.get(conv.thread_id)
             record = _PENDING.get(request_id) if request_id else None
@@ -351,7 +403,8 @@ def handle_user_message(data):
                 _PENDING_BY_THREAD.pop(thread_id, None)
         if superseded is not None:
             emit("confirmation_resolved", {"request_id": request_id,
-                                           "accepted": False, "reason": "superseded"})
+                                           "accepted": False, "reason": "superseded",
+                                           "conversation_id": conversation_id})
 
         socketio.start_background_task(
             _run_turn, user.id, user.name, conversation_id, thread_id,
@@ -395,7 +448,8 @@ def handle_confirmation_response(data):
     reason = "accepted" if effective else ("timeout" if expired else "declined")
 
     emit("confirmation_resolved", {"request_id": request_id,
-                                   "accepted": effective, "reason": reason})
+                                   "accepted": effective, "reason": reason,
+                                   "conversation_id": record["conversation_id"]})
 
     with _LOCK:
         if user.id in _ACTIVE_TURNS:
@@ -440,7 +494,8 @@ def _sweep_expired_pending(user_id: Optional[int] = None) -> None:
     for record in to_resume:
         _safe_emit(f"user_{record['user_id']}", "confirmation_resolved",
                    {"request_id": record["request_id"],
-                    "accepted": False, "reason": "timeout"})
+                    "accepted": False, "reason": "timeout",
+                    "conversation_id": record["conversation_id"]})
         try:
             socketio.start_background_task(
                 _run_resume, record["user_id"], record["conversation_id"],
