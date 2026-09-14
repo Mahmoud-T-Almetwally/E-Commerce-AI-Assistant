@@ -1,6 +1,6 @@
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, url_for
 from sqlalchemy import func
 
 from database.db_setup import SessionLocal
@@ -14,6 +14,7 @@ lookup_bp = Blueprint('lookup', __name__)
 
 MAX_TERM_LENGTH = 50
 MAX_RESULTS = 10
+MAX_CAROUSEL_IDS = 12
 
 
 @lookup_bp.route('/lookup/categories')
@@ -46,3 +47,43 @@ def lookup_tags():
             query = query.filter(Tag.name.ilike(f"%{escaped}%", escape="\\"))
         rows = query.order_by(func.count(product_tags.c.product_id).desc()).limit(MAX_RESULTS).all()
     return jsonify([{"value": name, "count": count} for name, count in rows])
+
+
+@lookup_bp.route('/lookup/products')
+@limiter.limit("60 per minute")
+def lookup_products():
+    """
+    Resolve product IDs into card data for the chat carousel event
+    (display_product_carousel). Order preserved from the ids parameter.
+    """
+    ids: list = []
+    for part in (request.args.get('ids') or '').split(','):
+        part = part.strip()
+        if part.isdigit():
+            value = int(part)
+            if value > 0 and value not in ids:
+                ids.append(value)
+        if len(ids) >= MAX_CAROUSEL_IDS:
+            break
+    if not ids:
+        return jsonify([])
+
+    with SessionLocal() as db:
+        products = db.query(Product).filter(Product.id.in_(ids)).all()
+    by_id = {p.id: p for p in products}
+    cards = []
+    for product_id in ids:
+        p = by_id.get(product_id)
+        if p is None:
+            continue
+        cards.append({
+            "id": p.id,
+            "name": p.name,
+            "price": float(p.price),
+            "image_url": p.image_url,
+            "category": p.category,
+            "stock_quantity": p.stock_quantity,
+            "in_stock": p.stock_quantity > 0,
+            "url": url_for('store.product_detail', product_id=p.id),
+        })
+    return jsonify(cards)
