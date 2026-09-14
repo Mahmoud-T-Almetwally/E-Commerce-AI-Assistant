@@ -19,7 +19,7 @@
       <a href="{{ url_for('store.list_products') }}">Shop</a>
       {% if session.get('user_id') %}
         <a href="{{ url_for('store.list_orders') }}">Orders</a>
-        <a href="{{ url_for('chat.customer_chat') }}">AI Assistant</a>
+        <a href="{{ url_for('chat.chat_page') }}">AI Assistant</a>
         <a class="cart-link" href="{{ url_for('store.view_cart') }}">Cart{% if cart_count %}<span class="cart-count">{{ cart_count }}</span>{% endif %}</a>
         <span class="nav-user">Hi, {{ session.get('name') }}</span>
         <a href="{{ url_for('auth.logout') }}">Log out</a>

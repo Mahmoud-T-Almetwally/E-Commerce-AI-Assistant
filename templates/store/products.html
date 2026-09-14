@@ -9,7 +9,7 @@
     <p>Browse the catalog, or ask our AI assistant anything about products, shipping and returns.</p>
   </div>
   {% if session.get('user_id') %}
-    <a class="btn" href="{{ url_for('chat.customer_chat') }}">💬 Ask the assistant</a>
+    <a class="btn" href="{{ url_for('chat.chat_page') }}">💬 Ask the assistant</a>
   {% else %}
     <a class="btn" href="{{ url_for('auth.register') }}">Create an account</a>
   {% endif %}
