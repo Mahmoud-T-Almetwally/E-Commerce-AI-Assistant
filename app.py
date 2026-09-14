@@ -10,7 +10,7 @@ from database.models import KnowledgeDocument
 from database.rag_manager import get_rag_manager
 from routes import register_routes
 from utils.config import config
-from utils.extensions import csrf, limiter
+from utils.extensions import csrf, limiter, socketio
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -37,6 +37,19 @@ def _reconcile_vector_store() -> None:
         )
 
 
+def _exempt_socketio_from_csrf(app: Flask) -> None:
+    """
+    CSRFProtect validates every POST, which would reject Socket.IO's
+    long-polling transport.
+    """
+    for rule in app.url_map.iter_rules():
+        if rule.rule.startswith("/socket.io"):
+            view = app.view_functions.get(rule.endpoint)
+            if view is not None:
+                csrf.exempt(view)
+                logger.debug("CSRF exempted socket.io rule '%s'.", rule.rule)
+
+
 def create_app() -> Flask:
     """
     Application factory to create and configure the Flask instance.
@@ -57,6 +70,8 @@ def create_app() -> Flask:
 
     csrf.init_app(app)
     limiter.init_app(app)
+    socketio.init_app(app)
+    _exempt_socketio_from_csrf(app)
 
     init_db()
 
@@ -85,8 +100,13 @@ def create_app() -> Flask:
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(
+    # The server MUST be started through socketio.run (not app.run) or the
+    # socket endpoint is dead.
+    # front it with a real reverse proxy / swap async mode for production.
+    socketio.run(
+        app,
         host=config.flask_config.host,
         port=config.flask_config.port,
-        debug=config.flask_config.debug
+        debug=config.flask_config.debug,
+        allow_unsafe_werkzeug=True,
     )

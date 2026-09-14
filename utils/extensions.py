@@ -9,4 +9,4 @@ csrf = CSRFProtect()
 # Swap storage_uri to Redis in production (limits are per-process otherwise).
 limiter = Limiter(key_func=get_remote_address, default_limits=[], storage_uri="memory://")
 
-socketio = SocketIO(cors_allowed_origins="*")
+socketio = SocketIO(cors_allowed_origins="*", async_mode="threading")

@@ -1,7 +1,3 @@
-# OmniCart AI Assistant — runtime configuration.
-# Secrets are sourced from the environment (.env) and are never written here.
-# Admins can hot-edit `llm_config` at runtime via PUT /api/llm-config.
-
 flask_config:
   host: 127.0.0.1
   port: 5000
