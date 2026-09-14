@@ -1,207 +1,176 @@
-import asyncio
+"""
+Tool infrastructure: registration, result envelopes, retry policy helpers.
+
+Tools are plain functions over SessionLocal that return a uniform JSON
+envelope (or raise domain exceptions, which the tool node maps to envelopes):
+
+    success: {"status": "success", "data": {...}, "ui_event": {...}?}
+    failure: {"status": "error",
+              "error": {"code", "message", "retryable", "hint"}}
+
+The @agent_tool decorator:
+  * turns the function into a LangChain StructuredTool (schema inferred from
+    signature + docstring) for llm.bind_tools();
+  * hides the ``user_id`` parameter from the model (InjectedToolArg) while the
+    graph's tool node injects the *authenticated* user's id at call time —
+    the model can never forge identity;
+  * gives every tool a model-visible ``retries`` parameter (resolved at
+    runtime from config.agent.max_tool_retries when omitted, so it
+    hot-reloads).
+
+Execution policy (attempts, backoff, confirmation interrupts, event
+emission) lives in agent.graph.execute_tools — tools stay pure.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import inspect
+import json
 import logging
-import re
-from typing import Any, Callable, Dict, List
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Optional
 
-from langchain_core.messages import ToolMessage
-from langgraph.types import interrupt
+from langchain_core.tools import InjectedToolArg
+from langchain_core.tools import tool as langchain_tool
 
-from agent.state import AgentState
 from utils.config import config
+from utils.exceptions import (
+    OutOfStockError,
+    RAGError,
+    RecordNotFoundError,
+)
 
 logger = logging.getLogger(__name__)
 
-EmitFn = Callable[[str, Dict[str, Any]], None]
+#: Codes the model may see. Membership in RETRYABLE_CODES controls whether the
+#: tool node may automatically re-run the *same* call: transient failures yes,
+#: user refusals and argument errors never.
+RETRYABLE_CODES = frozenset({"internal_error", "rag_unavailable"})
 
-_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-
-
-class ToolValidationError(Exception):
-    """Non-retryable: the model produced arguments that fail schema validation."""
-
-
-def _noop_emit(event: str, payload: Dict[str, Any]) -> None:
-    return None
-
-
-def resolve_emit(configurable: Dict[str, Any]) -> EmitFn:
-    """Pulls the status-emitter callback injected by the chat route, if any."""
-    emit = (configurable or {}).get("emit_status")
-    return emit if callable(emit) else _noop_emit
+KNOWN_CODES = frozenset({
+    "user_declined", "declined_earlier", "out_of_stock", "not_found",
+    "invalid_arguments", "cart_empty", "rag_unavailable",
+    "internal_error", "unknown_tool",
+})
 
 
-def sanitize_text(value: Any, *, max_length: int = 2000) -> str:
-    """Strips control characters (prompt-injection carriers) and bounds length."""
-    return _CONTROL_CHARS.sub("", str(value)).strip()[:max_length]
+def success(data: Any = None, ui_event: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Build a success envelope. `ui_event` is forwarded to the UI by the tool node."""
+    return {"status": "success", "data": data, "ui_event": ui_event}
 
 
-def validate_tool_arguments(tool, args: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Validates tool arguments against the tool's pydantic schema, then returns
-    the original arguments with string values sanitized. Raises
-    ToolValidationError (non-retryable) on schema failure.
-    """
-    args = args or {}
-    schema = getattr(tool, "args_schema", None)
-    if schema is not None:
-        try:
-            schema.model_validate(args)
-        except Exception as exc:
-            raise ToolValidationError(f"schema validation failed: {exc}") from exc
+def error(code: str, message: str, *, retryable: Optional[bool] = None,
+          hint: Optional[str] = None) -> Dict[str, Any]:
+    """Build an error envelope the model can act on (see KNOWN_CODES)."""
+    if code not in KNOWN_CODES:
+        code = "internal_error"
+    if retryable is None:
+        retryable = code in RETRYABLE_CODES
     return {
-        key: sanitize_text(value) if isinstance(value, str) else value
-        for key, value in args.items()
+        "status": "error",
+        "error": {"code": code, "message": message,
+                  "retryable": retryable, "hint": hint or ""},
     }
 
 
-def _is_retryable(exc: BaseException) -> bool:
-    """Transient infrastructure failures may be retried; everything else may not."""
-    if getattr(exc, "retryable", False):
-        return True
+@dataclass(frozen=True)
+class ToolSpec:
+    """Everything the graph needs to know about a registered tool."""
+    tool: Any                                  # StructuredTool (schema for the model)
+    fn: Callable[..., Dict[str, Any]]          # the raw function
+    name: str
+    sensitive: bool
+    needs_user_id: bool
+    confirmation: Optional[Callable[[Dict[str, Any], int], str]]
+
+
+TOOL_REGISTRY: Dict[str, ToolSpec] = {}
+
+
+def agent_tool(*, sensitive: bool = False,
+               confirmation: Optional[Callable[[Dict[str, Any], int], str]] = None):
+    """
+    Register a tool. `sensitive` marks tools requiring user confirmation.
+    `confirmation(args, user_id)` renders the human-facing prompt for the
+    confirmation dialog; falls back to a generic prompt on failure.
+    """
+    def decorator(fn):
+        name = fn.__name__
+        if name in TOOL_REGISTRY:
+            raise RuntimeError(f"Duplicate agent tool registration: {name}")
+        needs_user_id = "user_id" in inspect.signature(fn).parameters
+        structured = langchain_tool(name)(fn)
+        TOOL_REGISTRY[name] = ToolSpec(
+            tool=structured, fn=fn, name=name, sensitive=sensitive,
+            needs_user_id=needs_user_id, confirmation=confirmation,
+        )
+        logger.debug("Registered agent tool '%s' (sensitive=%s).", name, sensitive)
+        return structured
+    return decorator
+
+
+def resolve_retries(raw_args: Optional[Dict[str, Any]]) -> int:
+    """Per-call retry budget: model-supplied `retries`, else config default, clamped 0..5."""
+    value = (raw_args or {}).get("retries")
+    if value is None:
+        value = int(config.agent.max_tool_retries)
     try:
-        import sqlalchemy.exc as sa_exc
-        operational = (sa_exc.OperationalError,)
-    except ImportError:
-        operational = ()
-    return isinstance(exc, (asyncio.TimeoutError, ConnectionError) + operational)
+        value = int(value)
+    except (TypeError, ValueError):
+        value = int(config.agent.max_tool_retries)
+    return max(0, min(value, 5))
 
 
-def _format_tool_error(name: str, exc: BaseException, *, attempt: int,
-                       max_attempts: int, retryable: bool) -> str:
-    if not retryable:
-        return (
-            f"TOOL_ERROR [invalid]: '{name}' rejected its arguments: {exc}. "
-            f"Correct the arguments and call it again — do not repeat the identical call."
-        )
-    if attempt < max_attempts:
-        return (
-            f"TOOL_ERROR [retryable]: '{name}' failed (attempt {attempt}/{max_attempts}): {exc}. "
-            f"The system is retrying automatically — do not re-issue the tool call yourself."
-        )
-    return (
-        f"TOOL_ERROR [fatal]: '{name}' failed after {max_attempts} attempt(s): {exc}. "
-        f"Do not retry. Apologize to the user and offer an alternative."
-    )
+def call_fingerprint(tool_name: str, raw_args: Optional[Dict[str, Any]]) -> str:
+    """Stable hash of (tool, business args) — detects repeated identical calls."""
+    payload = {k: v for k, v in (raw_args or {}).items() if k != "retries"}
+    blob = json.dumps({"tool": tool_name, "args": payload}, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
-async def execute_tool_calls(state: AgentState, tools: List[Any],
-                             runnable_config: Dict[str, Any]) -> Dict[str, Any]:
+def classify_exception(exc: Exception) -> Dict[str, Any]:
+    """Map a raised exception to the error envelope the model should see."""
+    if isinstance(exc, OutOfStockError):
+        return error("out_of_stock", str(exc), retryable=False,
+                     hint="The requested quantity exceeds stock; re-call with a lower "
+                          "quantity or suggest alternatives.")
+    if isinstance(exc, RecordNotFoundError):
+        return error("not_found", str(exc), retryable=False,
+                     hint="The identifier is wrong; call search_products / view_cart "
+                          "first to discover valid IDs.")
+    if isinstance(exc, (TypeError, ValueError)):
+        # pydantic ValidationError subclasses ValueError
+        return error("invalid_arguments", f"Invalid arguments: {exc}", retryable=False,
+                     hint="Fix the argument values/types and call again.")
+    if isinstance(exc, RAGError):
+        return error("rag_unavailable", f"Knowledge base failure: {exc}", retryable=True,
+                     hint="The knowledge base may be transiently down; retry once, or "
+                          "answer without it and say you cannot verify store specifics.")
+    return error("internal_error", f"Unexpected tool failure: {exc}", retryable=True,
+                 hint="A transient error occurred; you may retry the same call.")
+
+
+def get_event_writer() -> Callable[[Dict[str, Any]], None]:
     """
-    Executes every pending tool call in the last AIMessage with:
-      - strict argument validation (schema + sanitization),
-      - bounded retries with exponential-ish backoff for transient failures,
-      - structured error ToolMessages fed back to the model on failure,
-      - per-attempt status events for the front-end.
+    Safe accessor for langgraph's custom-stream writer. Nodes/tools push UI
+    events (tool status, carousel, notes) through it without knowing about
+    Socket.IO. Outside a streaming run it degrades to a no-op, so the graph
+    stays runnable headless (tests, future batch jobs).
     """
-    messages = state.get("messages") or []
-    if not messages:
-        return {}
-    last = messages[-1]
-    tool_calls = getattr(last, "tool_calls", None) or []
-    if not tool_calls:
-        return {}
+    try:
+        from langgraph.config import get_stream_writer
+        writer = get_stream_writer()
+    except Exception:
+        writer = None
 
-    runtime = config.agent
-    emit = resolve_emit((runnable_config or {}).get("configurable"))
-    by_name = {t.name: t for t in tools}
-    results: List[ToolMessage] = []
+    if not callable(writer):
+        return lambda payload: None
 
-    for tc in tool_calls:
-        tool = by_name.get(tc.get("name"))
-        call_id = tc.get("id") or ""
-        if tool is None:
-            results.append(ToolMessage(
-                content=f"TOOL_ERROR [invalid]: unknown tool '{tc.get('name')}'.",
-                tool_call_id=call_id, status="error"))
-            continue
+    def _safe_emit(payload: Dict[str, Any]) -> None:
+        try:
+            writer(payload)
+        except Exception:
+            logger.debug("Failed to emit graph event: %r", payload, exc_info=True)
 
-        max_attempts = 1 + runtime.max_tool_retries
-        for attempt in range(1, max_attempts + 1):
-            if runtime.status_events_enabled:
-                emit("tool_executing", {"tool": tool.name, "attempt": attempt,
-                                        "max_attempts": max_attempts})
-            try:
-                args = validate_tool_arguments(tool, tc.get("args") or {})
-                content = await tool.ainvoke(args, config=runnable_config)
-                results.append(ToolMessage(content=str(content), tool_call_id=call_id))
-                break
-            except ToolValidationError as exc:
-                results.append(ToolMessage(
-                    content=_format_tool_error(tool.name, exc, attempt=attempt,
-                                               max_attempts=max_attempts, retryable=False),
-                    tool_call_id=call_id, status="error"))
-                break
-            except Exception as exc:  # noqa: BLE001 — fed back to the model by design
-                retryable = _is_retryable(exc)
-                if not retryable or attempt >= max_attempts:
-                    results.append(ToolMessage(
-                        content=_format_tool_error(tool.name, exc, attempt=attempt,
-                                                   max_attempts=max_attempts, retryable=retryable),
-                        tool_call_id=call_id, status="error"))
-                    logger.warning("Tool '%s' failed permanently: %s", tool.name, exc)
-                    break
-                logger.info("Tool '%s' attempt %d/%d failed (retryable): %s",
-                            tool.name, attempt, max_attempts, exc)
-                if runtime.status_events_enabled:
-                    emit("tool_retrying", {"tool": tool.name, "attempt": attempt + 1,
-                                           "max_attempts": max_attempts,
-                                           "error": str(exc)[:200]})
-                await asyncio.sleep(runtime.tool_retry_backoff_seconds * attempt)
-
-    return {"messages": results}
-
-
-def make_tool_node(tools: List[Any]):
-    """Wraps tools in a plain graph node (safe tools — no confirmation needed)."""
-    async def tool_node(state: AgentState, runnable_config) -> Dict[str, Any]:
-        return await execute_tool_calls(state, tools, runnable_config)
-
-    tool_node.__name__ = "safe_tools"
-    return tool_node
-
-
-def make_hitl_tool_node(all_tools: List[Any], sensitive_names: set):
-    """
-    Wraps sensitive tools in a graph node that always asks the user for
-    confirmation first, using langgraph's dynamic `interrupt()`.
-
-    First pass: raises an interrupt whose payload describes the pending tool
-    calls (surfaced to the user by the chat route via SSE).
-    On resume (`Command(resume={"approved": bool, "note": str})`):
-      - approved  -> execute with the standard retry/error semantics,
-      - declined  -> feed a structured DECLINED ToolMessage back to the model.
-    """
-    async def sensitive_tools(state: AgentState, runnable_config) -> Dict[str, Any]:
-        messages = state.get("messages") or []
-        pending = []
-        if messages:
-            for tc in (getattr(messages[-1], "tool_calls", None) or []):
-                if tc.get("name") in sensitive_names:
-                    pending.append({"id": tc.get("id"), "name": tc.get("name"),
-                                    "args": tc.get("args") or {}})
-        
-        if pending:
-            decision = interrupt({"type": "tool_confirmation", "tool_calls": pending})
-            approved = bool(decision.get("approved")) if isinstance(decision, dict) else bool(decision)
-            note = (decision.get("note") or "").strip() if isinstance(decision, dict) else ""
-
-            if not approved:
-                return {"messages": [
-                    ToolMessage(
-                        content=(f"ACTION_DECLINED: the user declined to confirm '{tc['name']}'"
-                                 + (f" (reason: {sanitize_text(note, max_length=200)})." if note else ".")
-                                 + " Acknowledge the refusal and do not re-attempt unless asked."),
-                        tool_call_id=tc.get("id") or "",
-                        status="error",
-                    )
-                    for tc in pending
-                ]}
-                
-            if config.agent.status_events_enabled:
-                resolve_emit((runnable_config or {}).get("configurable"))(
-                    "confirmation_granted", {"tools": [tc["name"] for tc in pending]})
-                
-        return await execute_tool_calls(state, all_tools, runnable_config)
-
-    sensitive_tools.__name__ = "sensitive_tools"
-    return sensitive_tools
+    return _safe_emit
