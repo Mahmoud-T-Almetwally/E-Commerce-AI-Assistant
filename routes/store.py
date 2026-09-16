@@ -1,3 +1,24 @@
+"""
+Customer-facing storefront and cart management API.
+
+    GET    /                          Redirects to the main products listing.
+    GET    /products                  Browse catalog (search, filter, sort, paginate).
+    GET    /products/<id>             View product details and related items.
+    GET    /cart                      View active user's shopping cart.
+    POST   /cart/add                  Add an item to the cart (enforces stock limits).
+    POST   /cart/update               Update quantity of an existing cart item.
+    POST   /cart/remove/<id>          Remove an item from the cart.
+    GET    /checkout                  View order summary before purchase.
+    POST   /checkout                  Process cart, deduct stock safely, and create an Order.
+    GET    /orders                    List a customer's order history.
+    GET    /orders/<id>               View details of a specific past order.
+
+Endpoints interacting with the cart, checkout, or user orders require session
+authentication via the `@login_required` decorator. Stock deductions during
+checkout utilize optimistic row-level locking to prevent race conditions.
+"""
+
+
 import logging
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session

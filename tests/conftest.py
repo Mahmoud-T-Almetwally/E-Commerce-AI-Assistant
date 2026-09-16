@@ -8,12 +8,13 @@ This file sets up the test environment, including:
 """
 
 import pytest
+from decimal import Decimal
 from sqlalchemy import create_engine
 from werkzeug.security import generate_password_hash
 
 from app import create_app
 from database.db_setup import SessionLocal
-from database.models import Base, User, UserRole
+from database.models import Base, User, UserRole, Product
 
 
 @pytest.fixture(scope="session")
@@ -115,3 +116,27 @@ def customer_user(db_session):
     db_session.add(user)
     db_session.commit()
     return user
+
+
+@pytest.fixture(scope="function")
+def customer_client(client, customer_user):
+    """A test client pre-authenticated as a Customer."""
+    with client.session_transaction() as sess:
+        sess["user_id"] = customer_user.id
+        sess["role"] = customer_user.role.value
+        sess["name"] = customer_user.name
+    yield client
+
+@pytest.fixture(scope="function")
+def sample_product(db_session):
+    """Provides a standard product with stock available."""
+    product = Product(
+        name="Test Headphones",
+        description="Noise cancelling",
+        price=Decimal("199.99"),
+        stock_quantity=10,
+        category="Audio"
+    )
+    db_session.add(product)
+    db_session.commit()
+    return product
