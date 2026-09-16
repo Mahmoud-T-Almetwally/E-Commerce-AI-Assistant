@@ -24,7 +24,7 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, render_template, request
 from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -164,6 +164,15 @@ def _window_stats(db, since: Optional[datetime]) -> Dict[str, Any]:
         "chat_checkouts": int(c.chat_checkouts or 0),
         "chat_revenue": round(float(revenue or 0), 2),
     }
+
+
+@stats_bp.route('/conversations')
+@limiter.limit("60 per minute")
+@admin_required
+def conversations_page():
+    """Browseable conversations management page (thin shell; the table,
+    filters and drawer are client-rendered from the JSON API)."""
+    return render_template('admin/conversations.html')
 
 
 @stats_bp.route('/stats/overview')
@@ -400,7 +409,7 @@ def stats_checkout_list():
                     "include_cancelled": include_cancelled})
 
 
-@stats_bp.route('/conversations')
+@stats_bp.route('/conversations/list')
 @limiter.limit("60 per minute")
 @admin_required
 def list_conversations():

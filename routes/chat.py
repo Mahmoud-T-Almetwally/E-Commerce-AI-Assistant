@@ -48,7 +48,7 @@ from agent.stats import TurnStatsCollector
 from agent.tooling import error as tool_error
 from database.db_setup import SessionLocal
 from database.models import Conversation
-from utils.auth import get_current_user, login_required
+from utils.auth import admin_required, get_current_user, login_required
 from utils.config import config
 from utils.extensions import limiter, socketio
 
@@ -177,6 +177,21 @@ def _conversation_label(when) -> str:
         return when.strftime("%a %d %b %Y")
     except Exception:
         return "Conversation"
+
+
+@chat_bp.route("/chat/admin")
+@admin_required
+def admin_chat():
+    """
+    Admin playground: the SAME chat endpoint and protocol as the customer
+    page (chat.js is reused verbatim via #chat-config), plus the LLM/agent
+    configuration panel driven by 'admin-playground.js'.
+    """
+    user = get_current_user()
+    return render_template("chat/admin.html",
+                           chat_flags=_chat_flags(),
+                           user_name=user.name,
+                           initial_conversation_id=None)
 
 
 @chat_bp.route("/chat")
