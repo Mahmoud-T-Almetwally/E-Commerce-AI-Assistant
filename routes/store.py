@@ -6,7 +6,7 @@ from sqlalchemy.orm import joinedload
 
 from database.db_setup import SessionLocal
 from database.models import Product, Tag, CartItem, Order, OrderItem, OrderStatus
-from routes.auth import login_required
+from utils.auth import login_required
 from utils.exceptions import OutOfStockError
 from utils.pagination import get_pagination
 from utils.sanitizers import escape_like

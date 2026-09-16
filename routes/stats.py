@@ -38,7 +38,7 @@ from database.models import (
     OrderStatus,
     User,
 )
-from routes.auth import admin_required
+from utils.auth import admin_required
 from routes.webhook import drop_meta_pending_confirmation, meta_user_turn_active
 from routes.chat import (
     build_transcript,

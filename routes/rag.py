@@ -7,7 +7,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from database.db_setup import SessionLocal
 from database.models import KnowledgeDocument
 from database.rag_manager import get_rag_manager
-from routes.auth import admin_required
+from utils.auth import admin_required
 from utils.config import config
 from utils.exceptions import TextExtractionError
 from utils.file_extraction import extract_text

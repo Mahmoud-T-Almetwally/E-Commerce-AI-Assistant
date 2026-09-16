@@ -10,7 +10,8 @@ from werkzeug.security import generate_password_hash
 
 from database.db_setup import SessionLocal
 from database.models import Product, Order, OrderItem, User, UserRole, OrderStatus, Tag
-from routes.auth import EMAIL_RE, PHONE_RE, admin_required
+from routes.auth import EMAIL_RE, PHONE_RE
+from utils.auth import admin_required
 from utils.pagination import get_pagination
 from utils.sanitizers import escape_like
 from utils.sorting import apply_sorting
