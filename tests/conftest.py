@@ -14,7 +14,7 @@ from werkzeug.security import generate_password_hash
 
 from app import create_app
 from database.db_setup import SessionLocal
-from database.models import Base, User, UserRole, Product, KnowledgeDocument
+from database.models import Base, User, UserRole, Product, KnowledgeDocument, Tag
 
 
 @pytest.fixture(scope="session")
@@ -153,3 +153,20 @@ def sample_knowledge_doc(db_session):
     db_session.add(doc)
     db_session.commit()
     return doc
+
+
+@pytest.fixture(scope="function")
+def lookup_data(db_session):
+    """Populates the database with products and tags for lookup/autocomplete tests."""
+    tag_sale = Tag(name="Sale")
+    tag_new = Tag(name="New")
+    
+    p1 = Product(name="Laptop", description="laptop", category="Electronics", price=Decimal("999.99"), stock_quantity=5, tags=[tag_sale, tag_new])
+    p2 = Product(name="Phone", description="phone", category="Electronics", price=Decimal("499.99"), stock_quantity=10, tags=[tag_sale])
+    p3 = Product(name="Headphones", description="headphone", category="Electronics", price=Decimal("99.99"), stock_quantity=0, tags=[])
+    p4 = Product(name="Novel", description="novel", category="Books", price=Decimal("19.99"), stock_quantity=50, tags=[])
+    
+    db_session.add_all([p1, p2, p3, p4])
+    db_session.commit()
+    
+    return {"products": [p1, p2, p3, p4], "tags": [tag_sale, tag_new]}

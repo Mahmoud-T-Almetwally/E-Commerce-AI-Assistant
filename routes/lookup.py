@@ -1,3 +1,17 @@
+"""
+Public lookup and autocomplete API.
+
+    GET    /lookup/categories    Autocomplete product categories (sorted by popularity).
+    GET    /lookup/tags          Autocomplete product tags (sorted by attachment count).
+    GET    /lookup/products      Fetch product card details by a list of IDs.
+
+These read-only endpoints power the UI's search filters and the AI chat's
+product carousel (`display_product_carousel` tool). Results are rate-limited,
+and the `/lookup/products` endpoint guarantees returned cards strictly match 
+the requested ID order.
+"""
+
+
 import logging
 
 from flask import Blueprint, jsonify, request, url_for
