@@ -9,7 +9,7 @@ This file sets up the test environment, including:
 
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from werkzeug.security import generate_password_hash
 
 from app import create_app
 from database.db_setup import SessionLocal
@@ -50,7 +50,8 @@ def app_instance():
     flask_app.config.update({
         "TESTING": True,
         "WTF_CSRF_ENABLED": False,
-        "SERVER_NAME": "localhost.localdomain"
+        "SERVER_NAME": "localhost.localdomain",
+        "RATELIMIT_ENABLED": False
     })
     
     with flask_app.app_context():
@@ -82,8 +83,35 @@ def admin_client(client, db_session):
     db_session.add(admin)
     db_session.commit()
     
-    # 2. Forge the session cookie to log them in
     with client.session_transaction() as sess:
         sess["user_id"] = admin.id
         
     yield client
+
+@pytest.fixture(scope="function")
+def admin_user(db_session):
+    """Provides an active admin user with a known password (does not log them in)."""
+    user = User(
+        email="admin_login@test.com",
+        name="Test Admin",
+        password_hash=generate_password_hash("adminpass123"),
+        role=UserRole.ADMIN,
+        is_active=True
+    )
+    db_session.add(user)
+    db_session.commit()
+    return user
+
+@pytest.fixture(scope="function")
+def customer_user(db_session):
+    """Provides a standard active customer user with a known password."""
+    user = User(
+        email="customer@test.com",
+        name="Test Customer",
+        password_hash=generate_password_hash("password123"),
+        role=UserRole.CUSTOMER,
+        is_active=True
+    )
+    db_session.add(user)
+    db_session.commit()
+    return user

@@ -1,3 +1,18 @@
+"""
+Authentication and identity management API.
+
+    GET    /login       Render the login form. Redirects to dashboard/store if already logged in.
+    POST   /login       Authenticate user (Admin/Customer) and establish session. Handles safe `next` URL redirection.
+    GET    /register    Render the customer registration form. Redirects if already logged in.
+    POST   /register    Validate input and create a new Customer account.
+    GET    /logout      Clear the active user session and redirect to the store index.
+
+This module provides a single source of truth for user onboarding and authentication,
+ensuring role-based routing upon login and enforcing input validation constraints
+(e.g., email format, phone format, and password matching).
+"""
+
+
 import logging
 import re
 from urllib.parse import urlparse
