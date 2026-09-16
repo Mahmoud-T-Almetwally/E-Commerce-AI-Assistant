@@ -76,6 +76,9 @@ class MetaConfig(BaseModel):
     verify_token: Optional[str] = Field(default_factory=lambda: os.environ.get("META_VERIFY_TOKEN"))
     page_access_token: Optional[str] = Field(default_factory=lambda: os.environ.get("META_PAGE_ACCESS_TOKEN"))
     app_secret: Optional[str] = Field(default_factory=lambda: os.environ.get("META_APP_SECRET"))
+    graph_api_version: str = "v21.0"
+    public_base_url: Optional[str] = None
+    welcome_new_users: bool = True
 
 
 class DatabaseConfig(BaseModel):

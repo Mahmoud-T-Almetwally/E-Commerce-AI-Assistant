@@ -375,3 +375,35 @@ class AgentToolCall(Base):
         DateTime(timezone=True), server_default=func.now(), index=True)
 
     turn: Mapped["AgentTurnStats"] = relationship(back_populates="tool_calls")
+
+
+class MessengerIdentity(Base):
+    """
+    Links a Facebook Messenger Page-Scoped ID (PSID) to a store User.
+
+    v1 (auto-provisioned): the User is created on first contact with a
+    synthetic, non-loginable email (no password hash). A future account
+    linking flow can re-point `user_id` at a real customer account with zero
+    migration — conversations (thread ids) are unaffected, only this row
+    changes; `linked_at` is reserved for that.
+
+    Attributes:
+        id (int): Primary Key.
+        psid (str): Page-scoped id — unique per Page↔person pair.
+        user_id (int): FK to the mapped User (CASCADE with it).
+        created_at (datetime): First contact.
+        linked_at (Optional[datetime]): Reserved for account linking.
+        user (User): The mapped user.
+    """
+    __tablename__ = 'messenger_identities'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    psid: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now())
+    linked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped["User"] = relationship()

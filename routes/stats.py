@@ -39,6 +39,7 @@ from database.models import (
     User,
 )
 from routes.auth import admin_required
+from routes.webhook import drop_meta_pending_confirmation, meta_user_turn_active
 from routes.chat import (
     build_transcript,
     drop_pending_confirmation,
@@ -603,7 +604,7 @@ def delete_conversation(conversation_id):
         thread_id = conv.thread_id
         owner_id = conv.user_id
 
-    if user_turn_active(owner_id):
+    if user_turn_active(owner_id) or meta_user_turn_active(owner_id):
         return jsonify({"error": "This user has a chat turn in flight. "
                                  "Try again in a few seconds."}), 409
 
@@ -615,6 +616,8 @@ def delete_conversation(conversation_id):
             "reason": "deleted",
             "conversation_id": conversation_id,
         })
+
+    drop_meta_pending_confirmation(thread_id)
 
     try:
         _delete_checkpointer_thread(get_checkpointer(), thread_id)

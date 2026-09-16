@@ -45,7 +45,10 @@ embedding_config:
   model_name: text-embedding-3-small
 
 meta_config:
-  enabled: false
+  enabled: true
+  graph_api_version: "v21.0"
+  public_base_url: "https://<your-public-host>"
+  welcome_new_users: true
 
 agent:
   guard_enabled: true
