@@ -88,11 +88,15 @@
       input.value = Array.isArray(value) ? value.join(', ') : (value || '');
     } else {
       input = el('input');
-      input.type = 'number';
-      if (f.step != null) input.step = f.step;
-      if (f.min != null) input.min = f.min;
-      if (f.max != null) input.max = f.max;
-      input.placeholder = f.optional ? 'optional' : '';
+      input.type = f.type === 'text' ? 'text' : 'number';
+      
+      if (f.type === 'number') {
+        if (f.step != null) input.step = f.step;
+        if (f.min != null) input.min = f.min;
+        if (f.max != null) input.max = f.max;
+      }
+      
+      input.placeholder = f.placeholder || (f.optional ? 'optional' : '');
       input.value = (value === null || value === undefined) ? '' : String(value);
     }
     input.id = id;
