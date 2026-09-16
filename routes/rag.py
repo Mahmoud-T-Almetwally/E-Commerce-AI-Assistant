@@ -1,3 +1,19 @@
+"""
+RAG (Retrieval-Augmented Generation) Knowledge Base Management API.
+
+    GET    /knowledge                List all embedded knowledge documents (paginated).
+    GET    /knowledge/add            Render the form to add a new document or upload a file.
+    POST   /knowledge/add            Extract text (if file uploaded), validate, and insert into SQLite & ChromaDB.
+    GET    /knowledge/<id>/edit      Render the form to edit an existing document.
+    POST   /knowledge/<id>/edit      Update document text/metadata and sync changes to ChromaDB.
+    POST   /knowledge/<id>/delete    Remove a document from both SQLite and ChromaDB.
+
+All endpoints require `@admin_required`. This module implements dual-write 
+strategies (SQLite as the source of truth, ChromaDB for vector search) 
+and includes rollback mechanisms if the vector database operations fail.
+"""
+
+
 import logging
 import os
 from types import SimpleNamespace

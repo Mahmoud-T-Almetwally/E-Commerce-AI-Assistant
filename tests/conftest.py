@@ -14,7 +14,7 @@ from werkzeug.security import generate_password_hash
 
 from app import create_app
 from database.db_setup import SessionLocal
-from database.models import Base, User, UserRole, Product
+from database.models import Base, User, UserRole, Product, KnowledgeDocument
 
 
 @pytest.fixture(scope="session")
@@ -140,3 +140,16 @@ def sample_product(db_session):
     db_session.add(product)
     db_session.commit()
     return product
+
+
+@pytest.fixture(scope="function")
+def sample_knowledge_doc(db_session):
+    """Provides a standard knowledge document for RAG tests."""
+    doc = KnowledgeDocument(
+        title="Store Return Policy",
+        content="Items can be returned within 30 days for a full refund.",
+        doc_type="Policy"
+    )
+    db_session.add(doc)
+    db_session.commit()
+    return doc
