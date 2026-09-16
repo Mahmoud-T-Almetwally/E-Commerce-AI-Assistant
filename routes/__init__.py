@@ -9,6 +9,8 @@ from .admin import admin_bp
 from .store import store_bp
 from .rag import rag_bp
 from .chat import chat_bp
+from .llm_config import llm_config_bp
+from .stats import stats_bp
 from .lookup import lookup_bp
 # from .webhook import webhook_bp
 
@@ -21,6 +23,8 @@ def register_routes(app: Flask):
     app.register_blueprint(rag_bp, url_prefix='/admin/knowledge')
     app.register_blueprint(store_bp)
     app.register_blueprint(chat_bp)
+    app.register_blueprint(llm_config_bp, url_prefix='/admin/llm-config')
+    app.register_blueprint(stats_bp, url_prefix='/admin')
     app.register_blueprint(lookup_bp)
 
     # enable via config

@@ -12,6 +12,10 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Deque, Dict, List, Optional
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -47,12 +51,18 @@ class TurnStatsCollector:
         if not isinstance(payload, dict):
             return
         kind = payload.get("type")
-        if kind == "tool_status" and payload.get("state") in ("done", "error"):
+        if kind == "tool_status" and payload.get("state") in (
+                "done", "error", "declined", "blocked"):
+            try:
+                attempts = int(payload.get("attempt") or 1)
+            except (TypeError, ValueError):
+                attempts = 1
             self.stats.tool_calls.append({
                 "tool": payload.get("tool"),
                 "state": payload.get("state"),
                 "duration_ms": payload.get("duration_ms"),
-                "attempts": payload.get("attempt") or 0,
+                "attempts": attempts,
+                "order_id": payload.get("order_id"),   # successful chat checkouts
             })
         elif kind == "carousel":
             self.stats.carousels += 1
@@ -82,6 +92,74 @@ class TurnStatsCollector:
     def note_superseded(self) -> None:
         self.stats.superseded_confirmations += 1
 
+    def persist(self) -> None:
+        """
+        Best-effort SQL persistence (agent_turn_stats + agent_tool_calls).
+        Owns its session and never raises — stats must not break a chat turn.
+        Skipped when the conversation was deleted mid-turn, so a racing
+        admin deletion can never leave orphaned stat rows behind.
+        """
+        stats = self.stats
+        if stats.conversation_id is None:
+            return
+        try:
+            from database.db_setup import SessionLocal
+            from database.models import (
+                AgentToolCall as ToolCallRow,
+                AgentTurnStats as TurnRow,
+                Conversation,
+            )
+
+            with SessionLocal() as db:
+                if db.get(Conversation, stats.conversation_id) is None:
+                    return
+
+                error_text = (stats.error or "").strip() or None
+                if error_text:
+                    error_text = error_text[:500]
+
+                turn_row = TurnRow(
+                    conversation_id=stats.conversation_id,
+                    user_id=stats.user_id,
+                    thread_id=stats.thread_id,
+                    started_at=stats.started_at,
+                    finished_at=stats.finished_at,
+                    status=str(stats.status or "error")[:20],
+                    intent=(stats.intent[:50] if stats.intent else None),
+                    guard_blocked=bool(stats.guard_blocked),
+                    tokens_in=int(stats.tokens_in),
+                    tokens_out=int(stats.tokens_out),
+                    llm_calls=int(stats.llm_calls),
+                    error=error_text,
+                )
+                db.add(turn_row)
+
+                for call in stats.tool_calls:
+                    duration = call.get("duration_ms")
+                    try:
+                        duration = int(duration) if duration is not None else None
+                    except (TypeError, ValueError):
+                        duration = None
+                    order_id = call.get("order_id")
+                    try:
+                        order_id = int(order_id) if order_id is not None else None
+                    except (TypeError, ValueError):
+                        order_id = None
+                    db.add(ToolCallRow(
+                        turn=turn_row,
+                        conversation_id=stats.conversation_id,
+                        user_id=stats.user_id,
+                        tool_name=str(call.get("tool") or "unknown")[:100],
+                        state=str(call.get("state") or "done")[:20],
+                        duration_ms=duration,
+                        attempts=int(call.get("attempts") or 1),
+                        order_id=order_id,
+                    ))
+                db.commit()
+        except Exception:
+            logger.warning("Failed to persist turn stats (thread=%s, status=%s).",
+                           stats.thread_id, stats.status, exc_info=True)
+
     def finalize(self, status: str, values: Optional[Dict[str, Any]] = None,
                  error: Optional[str] = None) -> TurnStats:
         self.stats.status = status
@@ -91,7 +169,8 @@ class TurnStatsCollector:
             self.stats.intent = values.get("intent")
             verdict = values.get("guard_verdict") or {}
             self.stats.guard_blocked = bool(verdict.get("blocked"))
-        get_stats_registry().add(self.stats)
+        self.persist()                       # SQL first (dashboard, full length)
+        get_stats_registry().add(self.stats)  # in-memory tail (live panels)
         return self.stats
 
 

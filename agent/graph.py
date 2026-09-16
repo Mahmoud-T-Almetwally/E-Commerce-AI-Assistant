@@ -411,10 +411,20 @@ def execute_tools(state: Dict[str, Any]) -> Dict[str, Any]:
                     "attempt": attempt + 1, "retries": retries})
 
     failed = envelope.get("status") != "success"
-    writer({"type": "tool_status", "tool": name,
-            "state": "error" if failed else "done",
-            "duration_ms": int((time.monotonic() - started) * 1000),
-            "attempt": attempt, "retries": retries})
+    done_event: Dict[str, Any] = {
+        "type": "tool_status", "tool": name,
+        "state": "error" if failed else "done",
+        "duration_ms": int((time.monotonic() - started) * 1000),
+        "attempt": attempt, "retries": retries,
+    }
+    if not failed and name == "checkout":
+        data = envelope.get("data") if isinstance(envelope, dict) else None
+        if isinstance(data, dict) and data.get("order_id") is not None:
+            try:
+                done_event["order_id"] = int(data["order_id"])
+            except (TypeError, ValueError):
+                pass
+    writer(done_event)
 
     # ---- UI events (carousel today; generic channel for more later) ------
     ui_event = envelope.get("ui_event") if isinstance(envelope, dict) else None

@@ -283,3 +283,95 @@ class KnowledgeDocument(Base):
         server_default=func.now(),
         onupdate=func.now()
     )
+
+
+class AgentTurnStats(Base):
+    """
+    Persisted record of one agent graph execution ("turn") — powers the
+    admin dashboard's full-length and aggregated statistics.
+
+    A turn that pauses for user confirmation writes TWO rows: an
+    'interrupted' row at the pause (tokens/tool calls up to that point) and a
+    terminal row ('completed'/'error') when the resumed run finishes. Token
+    aggregates therefore sum over ALL rows; turn counts must exclude
+    status='interrupted'.
+
+    Deleting the parent Conversation removes its stat rows (explicit cascade
+    in the admin delete endpoint; ondelete CASCADE covers enforced-FK
+    deployments). Store orders are never touched.
+
+    Attributes:
+        id (int): Primary Key.
+        conversation_id (Optional[int]): FK to the Conversation this turn ran in.
+        user_id (Optional[int]): FK to the User who chatted.
+        thread_id (str): LangGraph thread id (matches Conversation.thread_id).
+        started_at / finished_at (datetime): Turn boundaries (UTC).
+        status (str): 'completed' | 'interrupted' | 'error'.
+        intent (Optional[str]): Classified intent for the turn.
+        guard_blocked (bool): Whether the guard node refused the message.
+        tokens_in / tokens_out (int): Token usage across the turn's rows.
+        llm_calls (int): Assistant messages produced during the turn.
+        error (Optional[str]): Short error summary for failed turns.
+        tool_calls (List[AgentToolCall]): Tool executions within this turn.
+    """
+    __tablename__ = 'agent_turn_stats'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conversation_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    thread_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    intent: Mapped[Optional[str]] = mapped_column(String(50))
+    guard_blocked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    tokens_in: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tokens_out: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    llm_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error: Mapped[Optional[str]] = mapped_column(String(500))
+
+    tool_calls: Mapped[List["AgentToolCall"]] = relationship(
+        back_populates="turn", cascade="all, delete-orphan")
+
+
+class AgentToolCall(Base):
+    """
+    One tool execution outcome within a turn (see AgentTurnStats).
+
+    Attributes:
+        id (int): Primary Key.
+        turn_id (int): FK to the parent AgentTurnStats row.
+        conversation_id (Optional[int]): FK to the Conversation (denormalized
+            for direct dashboard queries).
+        user_id (Optional[int]): Denormalized user id (plain integer by
+            design — no FK, so user lifecycle never rewrites stats).
+        tool_name (str): Registered tool name.
+        state (str): 'done' | 'error' | 'declined' | 'blocked'.
+        duration_ms (Optional[int]): Wall time of the execution loop.
+        attempts (int): Total attempts made (retries + 1).
+        order_id (Optional[int]): Order created by a successful chat checkout.
+        created_at (datetime): When the call finished (UTC).
+        turn (AgentTurnStats): The parent turn.
+    """
+    __tablename__ = 'agent_tool_calls'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    turn_id: Mapped[int] = mapped_column(
+        ForeignKey("agent_turn_stats.id", ondelete="CASCADE"), index=True, nullable=False)
+    conversation_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, index=True)
+
+    tool_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    state: Mapped[str] = mapped_column(String(20), nullable=False)
+    duration_ms: Mapped[Optional[int]] = mapped_column(Integer)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    order_id: Mapped[Optional[int]] = mapped_column(Integer, index=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True)
+
+    turn: Mapped["AgentTurnStats"] = relationship(back_populates="tool_calls")

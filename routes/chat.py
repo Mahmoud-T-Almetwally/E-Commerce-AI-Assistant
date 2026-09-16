@@ -120,6 +120,37 @@ def _sweep_attachments_locked() -> None:
         _ATTACHMENTS.pop(key, None)
 
 
+def drop_pending_confirmation(thread_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Atomically remove a thread's pending confirmation record WITHOUT resuming
+    the graph. Used by the admin conversation-delete flow. Returns the record
+    (for settling the customer's UI) or None.
+    """
+    with _LOCK:
+        request_id = _PENDING_BY_THREAD.pop(thread_id, None)
+        if request_id is None:
+            return None
+        return _PENDING.pop(request_id, None)
+
+
+def user_turn_active(user_id: Optional[int]) -> bool:
+    """True while the user has a chat turn/resume executing (admin guard)."""
+    if user_id is None:
+        return False
+    with _LOCK:
+        return user_id in _ACTIVE_TURNS
+
+
+def _conversation_exists(conversation_id: Optional[int]) -> bool:
+    if conversation_id is None:
+        return False
+    try:
+        with SessionLocal() as db:
+            return db.get(Conversation, conversation_id) is not None
+    except Exception:
+        return True   # fail-safe: attempt the resume anyway
+
+
 def _finalize_stats(collector: TurnStatsCollector, status: str, thread_id: str) -> None:
     values: Dict[str, Any] = {}
     try:
@@ -199,6 +230,59 @@ def chat_ping():
     })
 
 
+def build_transcript(thread_id: str) -> Dict[str, Any]:
+    """
+    Message replay from the checkpointer for one thread — shared by the
+    customer history endpoint and the admin transcript endpoint.
+    Returns {"messages": [...], "pending_confirmation": {...} | None}.
+    Raises on checkpointer failure; callers translate to HTTP errors.
+    """
+    messages: list = []
+    graph = get_agent_graph()
+    snapshot = graph.get_state({"configurable": {"thread_id": thread_id}})
+    values = (snapshot.values if snapshot else None) or {}
+
+    for m in values.get("messages") or []:
+        if m.type == "human":
+            messages.append({"role": "user", "content": message_text(m)})
+        elif m.type == "ai":
+            text = message_text(m)
+            if not text:
+                continue
+            messages.append({"role": "assistant", "content": text,
+                             "interim": bool(getattr(m, "tool_calls", None))})
+        elif m.type == "tool":
+            # ToolMessages are operational noise, EXCEPT carousel events,
+            # which are first-class chat artifacts and replayed here.
+            try:
+                envelope = json.loads(m.content)
+            except (TypeError, ValueError):
+                continue
+            ui_event = envelope.get("ui_event") if isinstance(envelope, dict) else None
+            if (isinstance(ui_event, dict)
+                    and ui_event.get("event") == "display_product_carousel"):
+                try:
+                    ids = [int(i) for i in ui_event.get("product_ids") or []][:12]
+                except (TypeError, ValueError):
+                    continue
+                if ids:
+                    messages.append({"role": "carousel", "product_ids": ids})
+
+    pending_confirmation = None
+    with _LOCK:
+        request_id = _PENDING_BY_THREAD.get(thread_id)
+        record = _PENDING.get(request_id) if request_id else None
+    if record:
+        pending_confirmation = {
+            "request_id": record["request_id"],
+            "tool": record["tool"],
+            "message": record["message"],
+            "args": record["args"],
+            "expires_at": record["expires_at"].isoformat(),
+        }
+    return {"messages": messages, "pending_confirmation": pending_confirmation}
+
+
 @chat_bp.route("/chat/history/<int:conversation_id>")
 @login_required
 def chat_history(conversation_id):
@@ -213,53 +297,15 @@ def chat_history(conversation_id):
         meta = {"id": conv.id, "thread_id": conv.thread_id,
                 "created_at": conv.created_at.isoformat() if conv.created_at else None,
                 "updated_at": conv.updated_at.isoformat() if conv.updated_at else None}
+        thread_id = conv.thread_id
 
-    messages = []
-    pending_confirmation = None
     try:
-        graph = get_agent_graph()
-        snapshot = graph.get_state({"configurable": {"thread_id": conv.thread_id}})
-        values = (snapshot.values if snapshot else None) or {}
-        for m in values.get("messages") or []:
-            if m.type == "human":
-                messages.append({"role": "user", "content": message_text(m)})
-            elif m.type == "ai":
-                text = message_text(m)
-                if not text:
-                    continue
-                messages.append({"role": "assistant", "content": text,
-                                 "interim": bool(getattr(m, "tool_calls", None))})
-            elif m.type == "tool":
-                try:
-                    envelope = json.loads(m.content)
-                except (TypeError, ValueError):
-                    continue
-                ui_event = envelope.get("ui_event") if isinstance(envelope, dict) else None
-                if (isinstance(ui_event, dict)
-                        and ui_event.get("event") == "display_product_carousel"):
-                    try:
-                        ids = [int(i) for i in ui_event.get("product_ids") or []][:12]
-                    except (TypeError, ValueError):
-                        continue
-                    if ids:
-                        messages.append({"role": "carousel", "product_ids": ids})
-        with _LOCK:
-            request_id = _PENDING_BY_THREAD.get(conv.thread_id)
-            record = _PENDING.get(request_id) if request_id else None
-        if record:
-            pending_confirmation = {
-                "request_id": record["request_id"],
-                "tool": record["tool"],
-                "message": record["message"],
-                "args": record["args"],
-                "expires_at": record["expires_at"].isoformat(),
-            }
+        payload = build_transcript(thread_id)
     except Exception:
         logger.exception("Failed to load history for conversation %s", conversation_id)
         return jsonify({"error": "Could not load conversation history."}), 500
 
-    return jsonify({"conversation": meta, "messages": messages,
-                    "pending_confirmation": pending_confirmation})
+    return jsonify({"conversation": meta, **payload})
 
 
 @chat_bp.route("/chat/upload", methods=["POST"])
@@ -492,10 +538,15 @@ def _sweep_expired_pending(user_id: Optional[int] = None) -> None:
                 _ACTIVE_TURNS.add(record["user_id"])
                 to_resume.append(record)
     for record in to_resume:
+        exists = _conversation_exists(record["conversation_id"])
         _safe_emit(f"user_{record['user_id']}", "confirmation_resolved",
                    {"request_id": record["request_id"],
-                    "accepted": False, "reason": "timeout",
+                    "accepted": False,
+                    "reason": "timeout" if exists else "deleted",
                     "conversation_id": record["conversation_id"]})
+        if not exists:
+            _release_turn(record["user_id"])   # thread is gone; nothing to resume
+            continue
         try:
             socketio.start_background_task(
                 _run_resume, record["user_id"], record["conversation_id"],
