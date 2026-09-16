@@ -142,3 +142,25 @@ a.carousel-card.carousel-dead { pointer-events:none; opacity:.7; }
 @media (prefers-reduced-motion: reduce) {
   .chat-dot.connecting, .status-line.on .status-dots::after, .carousel-skeleton { animation:none; }
 }
+
+.playground-panel .chat-head .btn { margin-left:auto; }
+.playground-panel .chat-head .btn + .conn-indicator { margin-left:.5rem; }
+
+.config-panel { display:flex; flex-direction:column; max-height:620px; overflow:hidden; }
+.config-body { flex:1; overflow-y:auto; padding-bottom:.5rem; }
+.config-body h3 { font-size:.85rem; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-500); margin:1.1rem 0 .5rem; }
+.config-body .field { margin-bottom:.75rem; }
+.config-body .field label { font-size:.8rem; }
+.config-body input, .config-body select { padding:.4rem .55rem; font-size:.88rem; }
+.config-check { display:flex; align-items:center; gap:.5rem; }
+.config-check input { width:auto; }
+.config-check label { margin:0; font-weight:600; font-size:.85rem; color:var(--ink-900); cursor:pointer; }
+.provider-note { font-size:.75rem; color:var(--ink-500); margin-top:.3rem; }
+.readonly-note { background:var(--surface-alt); border:1px dashed var(--border); border-radius:var(--radius); padding:.6rem .8rem; font-size:.8rem; color:var(--ink-500); }
+.config-actions { display:flex; gap:.5rem; padding:.85rem 1.25rem; border-top:1px solid var(--border); }
+.config-actions .btn-primary { margin-left:auto; }
+.config-status { padding:0 1.25rem .9rem; font-size:.8rem; min-height:1.1rem; }
+.config-status.ok { color:#047857; font-weight:600; }
+.config-status.err { color:#b91c1c; font-weight:600; }
+
+.toast-success { background:var(--success-bg); color:#047857; border:1px solid #a7f3d0; }

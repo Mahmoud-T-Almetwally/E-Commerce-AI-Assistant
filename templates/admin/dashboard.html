@@ -116,4 +116,94 @@
     </table>
   </div>
 </div>
+
+{# ============ AI Assistant analytics (client-rendered from /admin/stats) ============ #}
+<section class="ai-section" id="ai-section">
+  <div class="section-head">
+    <h2>AI Assistant</h2>
+    <div class="seg" id="ai-period-seg" role="group" aria-label="Statistics period">
+      <button type="button" class="seg-btn active" data-period="day">Daily</button>
+      <button type="button" class="seg-btn" data-period="week">Weekly</button>
+      <button type="button" class="seg-btn" data-period="month">Monthly</button>
+    </div>
+  </div>
+
+  <div class="kpi-grid" id="ai-kpis">
+    <div class="kpi skeleton"></div><div class="kpi skeleton"></div><div class="kpi skeleton"></div><div class="kpi skeleton"></div><div class="kpi skeleton"></div>
+  </div>
+
+  <div class="dash-grid">
+    <div class="card">
+      <div class="card-head"><h2>Token usage</h2><span class="muted small" id="ai-tokens-sub"></span></div>
+      <div class="card-body">
+        <div class="bar-chart grouped" id="ai-tokens-chart"></div>
+        <ul class="chart-legend">
+          <li><span class="swatch swatch-in"></span>Input</li>
+          <li><span class="swatch swatch-out"></span>Output</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Assistant activity</h2><span class="muted small" id="ai-activity-sub"></span></div>
+      <div class="card-body">
+        <div class="bar-chart grouped" id="ai-activity-chart"></div>
+        <ul class="chart-legend">
+          <li><span class="swatch swatch-turns"></span>Turns</li>
+          <li><span class="swatch swatch-tools"></span>Tool calls</li>
+          <li><span class="swatch swatch-checkouts"></span>Chat checkouts</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="dash-grid">
+    <div class="card">
+      <div class="card-head"><h2>Tool popularity</h2><span class="muted small" id="ai-tools-sub"></span></div>
+      <div class="card-body" id="ai-tools-body">
+        <div class="skeleton-row"></div><div class="skeleton-row"></div><div class="skeleton-row"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Chat checkouts</h2><span class="muted small" id="ai-checkouts-sub"></span></div>
+      <div class="card-body">
+        <div class="bar-chart" id="ai-checkouts-chart"></div>
+        <button type="button" class="btn btn-sm" id="ai-ledger-toggle" style="margin-top:.9rem">View full ledger</button>
+        <div class="ledger-wrap" id="ai-ledger" hidden>
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>Placed</th><th>Customer</th><th>Order</th><th>Status</th><th class="num">Total</th><th>Conversation</th></tr></thead>
+              <tbody id="ai-ledger-rows"></tbody>
+            </table>
+          </div>
+          <div class="ledger-page">
+            <span class="page-info" id="ai-ledger-info"></span>
+            <div class="page-links">
+              <button type="button" class="page-btn" id="ai-ledger-prev">Prev</button>
+              <button type="button" class="page-btn" id="ai-ledger-next">Next</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block extra_js %}
+<script id="dashboard-stats-config" type="application/json">
+{
+  "urls": {
+    "overview": {{ url_for('stats.stats_overview') | tojson }},
+    "tokens": {{ url_for('stats.stats_tokens') | tojson }},
+    "activity": {{ url_for('stats.stats_activity') | tojson }},
+    "tools": {{ url_for('stats.stats_tools') | tojson }},
+    "checkouts": {{ url_for('stats.stats_checkouts') | tojson }},
+    "checkoutsList": {{ url_for('stats.stats_checkout_list') | tojson }},
+    "conversationsPage": {{ url_for('stats.conversations_page') | tojson }}
+  }
+}
+</script>
+<script src="{{ url_for('static', filename='js/admin-ui.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/admin-stats.js') }}" defer></script>
 {% endblock %}

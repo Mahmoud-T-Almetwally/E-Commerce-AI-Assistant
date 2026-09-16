@@ -1,0 +1,92 @@
+{% extends 'admin/base.html' %}
+
+{% block title %}AI Conversations · {{ company_name }} Admin{% endblock %}
+{% block page_title %}AI Conversations{% endblock %}
+
+{% block extra_css %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="filter-bar">
+  <div class="field">
+    <label for="conv-search">Search customers</label>
+    <input type="text" id="conv-search" placeholder="Name or email…">
+  </div>
+  <div class="field">
+    <label>&nbsp;</label>
+    <button type="button" id="conv-search-btn" class="btn">Search</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Conversations</h2>
+    <span class="muted small" id="conv-count"></span>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Conversation</th><th>Customer</th><th class="num">Turns</th>
+          <th class="num">Tokens (in/out)</th><th class="num">Tool calls</th>
+          <th class="num">Chat orders</th><th>Last intent</th><th>Updated</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="conv-rows">
+        <tr><td colspan="9" class="muted small">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="pagination">
+    <span class="page-info" id="conv-page-info"></span>
+    <div class="page-links">
+      <button type="button" class="page-btn" id="conv-prev">Prev</button>
+      <button type="button" class="page-btn" id="conv-next">Next</button>
+    </div>
+  </div>
+</div>
+
+<div class="drawer" id="conv-drawer" hidden>
+  <div class="drawer-backdrop" id="conv-backdrop"></div>
+  <aside class="drawer-panel" role="dialog" aria-modal="true" aria-label="Conversation detail">
+    <header class="drawer-head">
+      <div>
+        <h2 id="drawer-title">Conversation</h2>
+        <span class="muted small" id="drawer-sub"></span>
+      </div>
+      <div class="drawer-actions">
+        <button type="button" class="btn btn-danger btn-sm" id="drawer-delete">Delete</button>
+        <button type="button" class="btn btn-sm" id="drawer-close">Close</button>
+      </div>
+    </header>
+    <div class="drawer-tabs">
+      <button type="button" class="drawer-tab active" data-tab="transcript">Transcript</button>
+      <button type="button" class="drawer-tab" data-tab="execution">Execution</button>
+    </div>
+    <div class="drawer-body">
+      <div id="drawer-transcript" class="drawer-pane"></div>
+      <div id="drawer-execution" class="drawer-pane" hidden></div>
+    </div>
+  </aside>
+</div>
+
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script id="conversations-config" type="application/json">
+{
+  "csrfToken": {{ csrf_token() | tojson }},
+  "urls": {
+    "list": {{ url_for('stats.list_conversations') | tojson }},
+    "detailBase": {{ url_for('stats.conversation_detail', conversation_id=0) | tojson }},
+    "conversationsPage": {{ url_for('stats.conversations_page') | tojson }},
+    "productBase": {{ url_for('store.product_detail', product_id=0) | tojson }}
+  }
+}
+</script>
+<script src="{{ url_for('static', filename='js/admin-ui.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/admin-conversations.js') }}" defer></script>
+{% endblock %}

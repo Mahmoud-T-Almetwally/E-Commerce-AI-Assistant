@@ -201,8 +201,10 @@
     connLabel: $('#conn-label'),
     toasts: $('#toast-stack'),
   };
-  for (const [name, node] of Object.entries(els)) {
-    if (!node) { console.error(`chat.js: missing element for "${name}".`); return; }
+  const REQUIRED_ELEMENTS = ['log', 'statusLine', 'statusText', 'form', 'input',
+    'send', 'attachBtn', 'fileInput', 'tray', 'dot', 'connLabel', 'toasts'];
+  for (const name of REQUIRED_ELEMENTS) {
+    if (!els[name]) { console.error(`chat.js: missing element for "${name}".`); return; }
   }
 
   /* ---------- small utilities ---------- */
@@ -361,18 +363,21 @@
 
   /* ---------- conversation sidebar ---------- */
   function setSidebarActive(conversationId) {
+    if (!els.convList) return;
     els.convList.querySelectorAll('.conv-item').forEach((item) => {
       item.classList.toggle('active', Number(item.dataset.conversationId) === conversationId);
     });
   }
 
   function markUnread(conversationId) {
+    if (!els.convList) return;
     const id = String(Number(conversationId));
     const item = els.convList.querySelector(`.conv-item[data-conversation-id="${id}"]`);
     if (item) item.classList.add('unread');
   }
 
   function addSidebarItem(conversationId) {
+    if (!els.convList) return null;
     const anchor = el('a', 'conv-item');
     anchor.href = HISTORY_BASE + String(conversationId);
     anchor.dataset.conversationId = String(conversationId);
@@ -776,7 +781,7 @@
   state.socket.on('conversation_started', (data) => {
     const id = data && Number(data.conversation_id);
     if (!Number.isInteger(id)) return;
-    if (!els.convList.querySelector(`.conv-item[data-conversation-id="${id}"]`)) {
+      if (!els.convList || !els.convList.querySelector(`.conv-item[data-conversation-id="${id}"]`)) {
       addSidebarItem(id);
     }
     if (state.activeConversationId == null) {
@@ -926,26 +931,29 @@
     showStatus('Sending…');
   });
 
-  els.newChatBtn.addEventListener('click', () => {
-    clearPendingConfirmation();
-    state.activeConversationId = null;
-    setSidebarActive(null);
-    updateUrl(null);
-    showEmptyState();
-    els.input.focus({ preventScroll: true });
-  });
+  if (els.convList) {
+    els.newChatBtn.addEventListener('click', () => {
+      clearPendingConfirmation();
+      state.activeConversationId = null;
+      setSidebarActive(null);
+      updateUrl(null);
+      showEmptyState();
+      els.input.focus({ preventScroll: true });
+    });
+  }
 
-  els.convList.addEventListener('click', (event) => {
-    const item = event.target.closest('a.conv-item');
-    if (!item) return;
-    event.preventDefault();
-    const id = Number(item.dataset.conversationId);
-    if (!Number.isInteger(id)) return;
-    item.classList.remove('unread');
-    if (id === state.activeConversationId) return; // already current — no refetch flicker
-    openConversation(id);
-  });
-
+  if (els.newChatBtn) {
+    els.convList.addEventListener('click', (event) => {
+      const item = event.target.closest('a.conv-item');
+      if (!item) return;
+      event.preventDefault();
+      const id = Number(item.dataset.conversationId);
+      if (!Number.isInteger(id)) return;
+      item.classList.remove('unread');
+      if (id === state.activeConversationId) return; // already current — no refetch flicker
+      openConversation(id);
+    });
+  }
   /* ---------- init ---------- */
   applyFlags(state.flags);
   setMode('idle');

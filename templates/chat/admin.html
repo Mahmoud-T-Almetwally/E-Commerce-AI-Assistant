@@ -1,81 +1,102 @@
 {% extends 'admin/base.html' %}
-{% from 'macros.html' import csrf_field %}
-{% block title %}AI Assistant · {{ company_name }} Admin{% endblock %}
-{% block page_title %}AI Assistant{% endblock %}
-{% block extra_css %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">{% endblock %}
+
+{% block title %}AI Playground · {{ company_name }} Admin{% endblock %}
+{% block page_title %}AI Assistant Playground{% endblock %}
+
+{% block extra_css %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
+{% endblock %}
 
 {% block content %}
 <div class="chat-admin-layout">
-  <div class="chat-panel">
+
+  <section class="chat-panel playground-panel" aria-label="Playground chat">
     <div class="chat-head">
-      <span class="chat-dot"></span>
-      <div>
-        <strong>Assistant playground</strong>
-        <div class="small muted">test the agent with the current model configuration</div>
-      </div>
+      <h2>Playground chat</h2>
+      <button type="button" id="new-chat-btn" class="btn btn-sm">+ New chat</button>
+      <span class="conn-indicator">
+        <span class="chat-dot" id="conn-dot" aria-hidden="true"></span>
+        <span id="conn-label">Connecting…</span>
+      </span>
     </div>
 
-    <div class="chat-log" id="chat-log">
-      <div class="msg msg-bot">
-        Admin playground — chat here to test retrieval quality and tone before
-        rolling changes out to customers.
-        <div class="msg-meta">just now</div>
-      </div>
+    <div class="chat-log" id="chat-log" role="log" aria-live="polite"></div>
+
+    <div class="suggest">
+      <button type="button" class="tag" data-suggest="Show me wireless headphones under $50">Headphones under $50</button>
+      <button type="button" class="tag" data-suggest="What is your return policy?">Return policy</button>
+      <button type="button" class="tag" data-suggest="Add the cheapest keyboard to my cart">Add-to-cart test</button>
     </div>
 
-    <form class="composer" method="post" action="{{ url_for('chat.admin_chat') }}">
-      {{ csrf_field() }}
-      <input type="text" id="chat-input" name="message" placeholder="Ask a test question…" autocomplete="off" required>
-      <button class="btn btn-primary" type="submit">Send</button>
+    <div class="status-line" id="status-line" aria-live="polite">
+      <span id="status-text"></span><span class="status-dots" id="status-dots"></span>
+    </div>
+
+    <div class="attachment-tray" id="attachment-tray"></div>
+
+    <form class="composer" id="chat-form" autocomplete="off">
+      <button type="button" id="attach-btn" class="btn attach-btn" aria-label="Attach an image"
+              title="Attach an image"{{ ' hidden' if not chat_flags.uploads_enabled else '' }}>📎</button>
+      <input type="file" id="file-input"
+             accept="{{ chat_flags.allowed_upload_extensions | join(',') }}"
+             {{ 'disabled' if not chat_flags.uploads_enabled else '' }} hidden>
+      <input type="text" id="chat-input" placeholder="Test the assistant…"
+             maxlength="{{ chat_flags.max_message_chars }}" aria-label="Message">
+      <button type="submit" id="send-btn" class="btn btn-primary">Send</button>
     </form>
-  </div>
+  </section>
 
-  <div class="stack">
-    {# TODO(agent): settings POST persists overrides (config.yaml or DB) and
-       applies to the live agent. Currently a stub — see routes/chat.py. #}
-    <form class="card card-body" method="post" action="{{ url_for('chat.admin_chat') }}">
-      <h2>Model parameters</h2>
-      {{ csrf_field() }}
-      <div class="field">
-        <label for="m-provider">Provider</label>
-        <select id="m-provider" name="provider">
-          {% for p in providers %}
-          <option value="{{ p }}" {{ 'selected' if llm_config.provider == p }}>{{ p | capitalize }}</option>
-          {% endfor %}
-        </select>
-        <span class="hint">Only providers the system supports are listed. e.g. openai, anthropic, google.</span>
-      </div>
-      <div class="field">
-        <label for="m-model">Model name</label>
-        <input id="m-model" name="model_name" type="text" value="{{ llm_config.model_name }}">
-        <span class="hint">Check Provider's catalog for full model name. e.g. gpt-4o-mini, llama-3.1-70b-versatile.</span>
-      </div>
-      <div class="field">
-        <label for="m-temp">Temperature — <output>{{ '%.1f' | format(llm_config.temperature) }}</output></label>
-        <input id="m-temp" type="range" name="temperature" min="0" max="1" step="0.1" value="{{ llm_config.temperature }}">
-      </div>
-      <div class="field">
-        <label for="m-tokens">Max tokens</label>
-        <input id="m-tokens" type="number" name="max_tokens" min="128" max="8192" step="128" value="{{ llm_config.max_tokens }}">
-      </div>
-      <button class="btn btn-primary" type="submit">Save settings</button>
-    </form>
-
-    <div class="card card-body">
-      <h2>Live configuration</h2>
-      <ul class="summary-list mono">
-        <li><span>LLM</span><span>{{ llm_config.provider }} / {{ llm_config.model_name }}</span></li>
-        <li><span>Embeddings</span><span>{{ embedding_config.provider }} / {{ embedding_config.model_name }}</span></li>
-        <li><span>RAG chunks</span><span>{{ rag_config.chunk_size }} chars · {{ rag_config.chunk_overlap }} overlap</span></li>
-      </ul>
-      <p class="muted small">Effective values loaded from config.yaml + environment. The playground uses these once the agent is wired.</p>
+  <aside class="card config-panel" aria-label="Model and agent configuration">
+    <div class="card-head">
+      <h2>Model &amp; Agent</h2>
+      <span class="badge badge-neutral" id="cfg-dirty" hidden>unsaved</span>
     </div>
-
-    <div class="card card-body">
-      <h2>System prompt</h2>
-      <p class="small muted">{{ system_context.system_prompt_template.format(
-           company_name=system_context.company_name, tone=system_context.tone) }}</p>
+    <div class="card-body config-body" id="config-body">
+      <p class="muted small">Loading configuration…</p>
     </div>
-  </div>
+    <div class="config-actions">
+      <button type="button" class="btn btn-sm" id="cfg-test">Test</button>
+      <button type="button" class="btn btn-sm btn-danger" id="cfg-reset">Reset</button>
+      <button type="button" class="btn btn-primary btn-sm" id="cfg-save" disabled>Save</button>
+    </div>
+    <div class="config-status" id="config-status"></div>
+  </aside>
+
 </div>
+
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script id="chat-config" type="application/json">
+{
+  "csrfToken": {{ csrf_token() | tojson }},
+  "userName": {{ user_name | tojson }},
+  "urls": {
+    "ping": {{ url_for('chat.chat_ping') | tojson }},
+    "upload": {{ url_for('chat.chat_upload') | tojson }},
+    "productLookup": {{ url_for('lookup.lookup_products') | tojson }},
+    "historyBase": {{ url_for('chat.chat_history', conversation_id=0) | tojson }},
+    "login": {{ url_for('auth.login') | tojson }},
+    "productImageFallback": {{ url_for('static', filename='images/default-product.png') | tojson }}
+  },
+  "flags": {{ chat_flags | tojson }},
+  "initialConversationId": {{ initial_conversation_id | tojson }}
+}
+</script>
+<script id="playground-config" type="application/json">
+{
+  "csrfToken": {{ csrf_token() | tojson }},
+  "urls": {
+    "config": {{ url_for('llm_config.get_config') | tojson }},
+    "test": {{ url_for('llm_config.test_config') | tojson }},
+    "reset": {{ url_for('llm_config.reset_config') | tojson }}
+  }
+}
+</script>
+<script src="{{ url_for('static', filename='js/vendor/socket.io.min.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/admin-ui.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/chat.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/admin-playground.js') }}" defer></script>
 {% endblock %}

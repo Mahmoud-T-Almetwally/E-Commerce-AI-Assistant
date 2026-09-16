@@ -29,6 +29,8 @@
       <span class="nav-group">AI</span>
       <a class="nav-item {{ 'active' if request.endpoint in ['rag.list_knowledge','rag.add_knowledge','rag.edit_knowledge'] }}" href="{{ url_for('rag.list_knowledge') }}">
         <span class="ic">▤</span> Knowledge Base</a>
+      <a class="nav-item {{ 'active' if request.endpoint == 'stats.conversations_page' }}" href="{{ url_for('stats.conversations_page') }}">
+        <span class="ic">✉</span> Conversations</a>
       <a class="nav-item {{ 'active' if request.endpoint == 'chat.admin_chat' }}" href="{{ url_for('chat.admin_chat') }}">
         <span class="ic">✦</span> AI Assistant</a>
     </nav>
