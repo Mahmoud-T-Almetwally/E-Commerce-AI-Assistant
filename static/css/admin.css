@@ -59,7 +59,7 @@
 .donut { width:150px; height:150px; border-radius:50%; position:relative; flex-shrink:0;
          background:conic-gradient(var(--surface-dim) 0 100%); }
 .donut::after { content:""; position:absolute; inset:26%; background:var(--surface); border-radius:50%; z-index:1; }
-.donut-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
+.donut-center { inset:0; display:flex; flex-direction:column; align-items:center;
                 justify-content:center; z-index:2; }
 .donut-center strong { font-size:1.3rem; color:var(--ink-900); }
 .donut-legend { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.45rem; font-size:.88rem; flex:1; min-width:160px; }
@@ -94,8 +94,7 @@
 @keyframes admin-shimmer { from{ transform:translateX(-100%);} to{ transform:translateX(100%);} }
 @media (prefers-reduced-motion: reduce){ .kpi.skeleton::after, .skeleton-row::after { animation:none; } }
 
-/* Grouped mini-bars — .bar-pair must be flex:1 so children percentage
-   heights resolve against a definite (flexed) height. */
+/* Grouped mini-bars  */
 .bar-chart.grouped .bar-pair { flex:1; min-height:0; display:flex; gap:3px; align-items:flex-end; justify-content:center; width:100%; }
 .bar.mini { max-width:26px; }
 .bar.mini.thin { max-width:16px; }
@@ -116,10 +115,24 @@
 .page-btn { font:inherit; cursor:pointer; }
 .page-btn:disabled { opacity:.4; cursor:not-allowed; pointer-events:none; }
 
+/* ---------- filter & pagination ---------- */
+.filter-bar { display:flex; gap:1rem; align-items:flex-end; margin-bottom:1.25rem; }
+.filter-bar .field:first-child { flex:1; }
+.filter-bar .field:last-child { flex:0 0 auto; }
+.filter-bar .btn { height:fit-content; }
+
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+}
+
 /* ---------- conversations table & drawer ---------- */
+.table th, .table td { vertical-align: middle; }
 .conv-idcell small { display:block; }
 .conv-customer { display:flex; align-items:center; gap:.6rem; }
-.conv-actions { display:flex; gap:.4rem; justify-content:flex-end; }
+.conv-actions { display:flex; gap:.4rem; justify-content:flex-end; align-items:center; }
 
 .drawer { position:fixed; inset:0; z-index:80; }
 .drawer-backdrop { position:absolute; inset:0; background:rgba(15,23,42,.45); }
@@ -138,7 +151,7 @@
 .exec-turn-head { display:flex; flex-wrap:wrap; gap:.4rem .8rem; align-items:center; font-size:.84rem; margin-bottom:.5rem; }
 .exec-turn-head .right { margin-left:auto; }
 .tool-chips { display:flex; flex-wrap:wrap; gap:.35rem; }
-.tool-chip { display:inline-flex; align-items:center; gap:.3rem; background:var(--surface-alt); border:1px solid var(--border); border-radius:999px; padding:.12rem .6rem; font-size:.75rem; font-family:var(--mono); }
+.tool-chip { display:inline-flex; align-items:center; gap:.3rem; background:var(--surface-alt); border:1px solid var(--border); border-radius:99px; padding:.12rem .6rem; font-size:.75rem; font-family:var(--mono); }
 .tool-chip .tc-state { font-weight:800; }
 .tool-chip.done .tc-state { color:#047857; }
 .tool-chip.error .tc-state { color:#b91c1c; }

@@ -76,25 +76,34 @@
       const idCell = el('td', 'conv-idcell');
       idCell.append(el('strong', null, `#${c.id}`),
                     el('small', 'muted', c.created_at ? `created ${fmtDateTime(c.created_at)}` : ''));
-      const userCell = el('td', 'conv-customer');
+      
+      const userCell = el('td');
+      const userContent = el('div', 'conv-customer');
       if (c.user) {
-        userCell.append(el('span', 'avatar', (c.user.name || '?').slice(0, 1).toUpperCase()),
+        userContent.append(el('span', 'avatar', (c.user.name || '?').slice(0, 1).toUpperCase()),
                         el('span', null, c.user.name));
         if (c.user.email) userCell.title = c.user.email;
       } else {
-        userCell.appendChild(el('span', 'muted', 'deleted user'));
+        userContent.appendChild(el('span', 'muted', 'deleted user'));
       }
+      userCell.appendChild(userContent);
+
       const intentCell = el('td');
       if (c.last_intent) intentCell.appendChild(el('span', 'tag', c.last_intent));
       else intentCell.appendChild(el('span', 'muted small', '—'));
-      const actions = el('td', 'conv-actions');
+      
+      // FIX: Wrap the actions in a div as well
+      const actionsCell = el('td');
+      const actionsContent = el('div', 'conv-actions');
       const viewBtn = el('button', 'btn btn-sm', 'View');
       viewBtn.type = 'button';
       viewBtn.addEventListener('click', () => openDrawer(c.id));
       const delBtn = el('button', 'btn btn-sm btn-danger', 'Delete');
       delBtn.type = 'button';
       delBtn.addEventListener('click', () => deleteConversation(c.id));
-      actions.append(viewBtn, delBtn);
+      actionsContent.append(viewBtn, delBtn);
+      actionsCell.appendChild(actionsContent);
+
       tr.append(
         idCell, userCell,
         el('td', 'num', fmtNum(c.turns)),
@@ -103,7 +112,7 @@
         el('td', 'num', c.chat_checkouts ? fmtNum(c.chat_checkouts) : '—'),
         intentCell,
         el('td', 'nowrap small', fmtDateTime(c.updated_at)),
-        actions,
+        actionsCell,
       );
       frag.appendChild(tr);
     });
