@@ -20,7 +20,7 @@ def register_routes(app: Flask):
     """
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp, url_prefix='/admin')
-    app.register_blueprint(rag_bp, url_prefix='/admin/knowledge')
+    app.register_blueprint(rag_bp, url_prefix='/admin')
     app.register_blueprint(store_bp)
     app.register_blueprint(chat_bp)
     app.register_blueprint(llm_config_bp, url_prefix='/admin/llm-config')
