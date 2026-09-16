@@ -1,3 +1,22 @@
+"""
+Admin dashboard and e-commerce management API.
+
+    GET    /admin/                              Dashboard home (KPIs, revenue, charts, recent orders)
+    GET    /admin/products                      List products (search, filter, sort, paginate)
+    GET    /admin/products/add                  Render the product creation form
+    POST   /admin/products/add                  Submit and create a new product
+    GET    /admin/products/<id>/edit            Render the product edit form
+    POST   /admin/products/<id>/edit            Update an existing product
+    POST   /admin/products/<id>/delete          Delete a product (with relation constraints)
+    GET    /admin/orders                        List orders (search, filter by status/date, paginate)
+    POST   /admin/orders/<id>/status            Update order status (handles inventory restoration on cancellation)
+    GET    /admin/customers                     List customers (search, filter by active state, paginate)
+    POST   /admin/users/create-admin            Create a new administrator account
+
+All endpoints in this module require active session authentication and Admin role
+privileges via the `@admin_required` decorator.
+"""
+
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
