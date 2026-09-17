@@ -13,6 +13,7 @@ from sqlalchemy import create_engine
 from werkzeug.security import generate_password_hash
 
 from app import create_app
+from utils.extensions import socketio
 from database.db_setup import SessionLocal
 from database.models import Base, User, UserRole, Product, KnowledgeDocument, Tag
 
@@ -170,3 +171,21 @@ def lookup_data(db_session):
     db_session.commit()
     
     return {"products": [p1, p2, p3, p4], "tags": [tag_sale, tag_new]}
+
+
+@pytest.fixture(scope="function")
+def socket_client(app_instance, client):
+    """An unauthenticated Socket.IO test client."""
+    sio_client = socketio.test_client(app_instance, flask_test_client=client)
+    yield sio_client
+    if sio_client.is_connected():
+        sio_client.disconnect()
+
+
+@pytest.fixture(scope="function")
+def auth_socket_client(app_instance, customer_client):
+    """A Socket.IO test client pre-authenticated as the Customer fixture."""
+    sio_client = socketio.test_client(app_instance, flask_test_client=customer_client)
+    yield sio_client
+    if sio_client.is_connected():
+        sio_client.disconnect()
