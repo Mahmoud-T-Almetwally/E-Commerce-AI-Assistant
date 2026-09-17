@@ -5,9 +5,9 @@ from typing import Any, Dict, List, Literal, Optional
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from utils.exceptions import ProviderAPIKeyNotFound, ConfigurationError
+from utils.exceptions import ProviderAPIKeyNotFound, ConfigurationError, UnsupportedProviderError
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +109,13 @@ class LLMConfig(BaseModel):
     timeout_seconds: float = Field(default=60.0, gt=0)
     vision_capable: bool = Field(default=False)
     api_key: Optional[str] = None
+
+    @field_validator('provider', mode="before")
+    @classmethod
+    def validate_provider(cls, value: str):
+        if value not in ["openai", "anthropic", "groq", "google", "huggingface", "local"]:
+            raise UnsupportedProviderError(f"Unsupported Provider name passed: ", value)
+        return value
 
     def get_api_key(self) -> Optional[str]:
         return _require_api_key(self.provider, self.api_key)
