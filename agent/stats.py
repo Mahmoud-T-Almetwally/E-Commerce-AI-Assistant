@@ -1,8 +1,7 @@
-"""In-memory turn statistics — the hook the admin dashboard will consume.
+"""Turn statistics — the hook the admin dashboard will consume.
 
 Process-local by design (threading async mode, single worker): the registry
-keeps the last N turns per user plus global counters. Swap for a persistent
-store when the dashboard lands; TurnStats is already a stable shape.
+keeps the last N turns per user plus global counters.
 """
 
 from __future__ import annotations
